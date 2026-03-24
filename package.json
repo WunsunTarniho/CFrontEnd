@@ -1,0 +1,13 @@
+{
+  "name": "chartify-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Frontend for the Trading Chart library",
+  "scripts": {
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "jsdom": "^22.1.0"
+  }
+}

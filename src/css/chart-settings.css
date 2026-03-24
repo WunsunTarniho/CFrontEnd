@@ -1,0 +1,273 @@
+/* Chart Settings Modal Styles */
+
+.chart-settings-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    /* background: rgba(0, 0, 0, 0.5); */
+    z-index: 2000;
+    display: none;
+    /* Hidden by default */
+    align-items: center;
+    justify-content: center;
+}
+
+.chart-settings-dialog {
+    width: 680px;
+    height: 580px;
+    background: #1e222d;
+    border-radius: 6px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    color: #d1d4dc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    overflow: hidden;
+}
+
+/* Header */
+.chart-settings-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2e39;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chart-settings-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #f0f3fa;
+}
+
+.chart-settings-close {
+    background: none;
+    border: none;
+    color: #787b86;
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.chart-settings-close:hover {
+    color: #f0f3fa;
+}
+
+/* Main Layout */
+.chart-settings-main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+/* Sidebar */
+.chart-settings-sidebar {
+    width: 180px;
+    border-right: 1px solid #2a2e39;
+    padding: 8px 0;
+    background: #1e222d;
+}
+
+.chart-settings-tab {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #b2b5be;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: background 0.2s, color 0.2s;
+}
+
+.chart-settings-tab:hover {
+    background: #2a2e39;
+    color: #f0f3fa;
+}
+
+.chart-settings-tab.active {
+    background: #2a2e39;
+    color: #2962ff;
+    border-left: 2px solid #2962ff;
+    padding-left: 14px;
+    /* Adjust for border */
+}
+
+/* Content Area */
+.chart-settings-content {
+    flex: 1;
+    padding: 20px 24px;
+    overflow-y: auto;
+    background: #1e222d;
+}
+
+.chart-settings-view {
+    display: none;
+}
+
+.chart-settings-view.active {
+    display: block;
+}
+
+/* Groups and Rows */
+.settings-group {
+    margin-bottom: 24px;
+}
+
+.settings-group-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #787b86;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+    gap: 12px;
+}
+
+.settings-row label {
+    font-size: 14px;
+    color: #d1d4dc;
+    cursor: pointer;
+    flex: none;
+    /* Default behavior: labels followed by something (color pickers, selects) have fixed width for alignment */
+    width: 100px;
+}
+
+/* If the label is the LAST element in the row (e.g., following a checkbox), 
+   let it take all available space to prevent squashing long text. */
+.settings-row label:last-child {
+    flex: 1;
+    width: auto;
+}
+
+.settings-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #2962ff;
+    cursor: pointer;
+}
+
+.settings-row select {
+    background: #2a2e39;
+    border: 1px solid #363c4e;
+    color: #d1d4dc;
+    padding: 4px 8px;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+}
+
+.settings-description {
+    font-size: 12px;
+    color: #787b86;
+    margin-top: -8px;
+    margin-bottom: 16px;
+    padding-left: 28px;
+}
+
+/* Footer */
+.chart-settings-footer {
+    padding: 12px 16px;
+    border-top: 1px solid #2a2e39;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #1e222d;
+}
+
+.footer-left {
+    display: flex;
+    align-items: center;
+}
+
+.footer-right {
+    display: flex;
+    gap: 8px;
+}
+
+.chart-settings-btn {
+    padding: 6px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-cancel {
+    background: #2a2e39;
+    color: #f0f3fa;
+    border: 1px solid #363c4e;
+}
+
+.btn-cancel:hover {
+    background: #363c4e;
+}
+
+.btn-ok {
+    background: #2962ff;
+    color: white;
+    border: none;
+}
+
+.btn-ok:hover {
+    background: #1e53e5;
+}
+
+.btn-template {
+    background: transparent;
+    border: 1px solid #363c4e;
+    color: #f0f3fa;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-template:hover {
+    background: #2a2e39;
+}
+
+/* Custom width picker and other inputs (reusing some styles might be needed or redefined) */
+.settings-color-picker {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid #363c4e;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+}
+
+/* Scrollbar */
+.chart-settings-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chart-settings-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chart-settings-content::-webkit-scrollbar-thumb {
+    background: #363c4e;
+    border-radius: 3px;
+}
+
+.chart-settings-content::-webkit-scrollbar-thumb:hover {
+    background: #454b5e;
+}
+
+/* Dynamic Symbol Settings */
+.settings-mode-section {
+    margin-bottom: 12px;
+}
+
+.settings-row .settings-color-picker+.settings-color-picker {
+    margin-left: 8px;
+}
