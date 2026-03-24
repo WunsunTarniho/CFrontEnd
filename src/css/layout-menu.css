@@ -1,0 +1,154 @@
+
+/* Layout Selector Styles */
+.layout-selector-container {
+    position: relative;
+    margin-left: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.layout-selector-btn {
+    background: transparent;
+    border: 1px solid #363a45;
+    border-radius: 4px;
+    color: #d1d4dc;
+    padding: 4px 10px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.layout-selector-btn:hover {
+    background-color: #2a2e39;
+    border-color: #434651;
+}
+
+.layout-selector-btn.active {
+    background-color: #2a2e39;
+    border-color: #2962ff;
+    color: #2962ff;
+}
+
+.layout-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: 240px;
+    background-color: #1e222d;
+    border: 1px solid #363a45;
+    border-radius: 6px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: none;
+    padding: 6px 0;
+}
+
+.layout-dropdown.show {
+    display: block;
+    animation: dropdownShow 0.15s ease-out;
+}
+
+@keyframes dropdownShow {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.layout-dropdown-item {
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #d1d4dc;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.layout-dropdown-item:hover {
+    background-color: #2a2e39;
+}
+
+.layout-dropdown-item svg {
+    margin-right: 12px;
+    opacity: 0.7;
+}
+
+.layout-dropdown-item .item-label {
+    flex: 1;
+}
+
+.layout-dropdown-item .item-shortcut {
+    color: #787b86;
+    font-size: 11px;
+}
+
+.layout-dropdown-divider {
+    height: 1px;
+    background-color: #363a45;
+    margin: 6px 0;
+}
+
+/* Specific item styles based on the image */
+.layout-dropdown-item.disabled {
+    color: #434651;
+    cursor: default;
+}
+
+.layout-dropdown-item.toggle-item {
+    cursor: default;
+}
+
+.layout-dropdown-item.toggle-item:hover {
+    background: transparent;
+}
+
+/* Toggle Switch Styling */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #363a45;
+  transition: .4s;
+  border-radius: 18px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #2962ff;
+}
+
+input:checked + .slider:before {
+  transform: translateX(14px);
+}

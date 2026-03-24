@@ -34,3 +34,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+vitest.config.js
+stock_list.json
+test_output.txt
+verify_charts.cjs
+Chartify
