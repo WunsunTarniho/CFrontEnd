@@ -232,14 +232,18 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
                 window.setChartModeActive(activeLayout.chartState.chartMode);
             }
         }
-        window.chart.render();
+        if (window.chart) {
+            window.chart.isLoading = false;
+        }
+
         if (window.setSearchTicker && window.chart.symbol) {
             window.setSearchTicker(window.chart.symbol);
         }
         if (window.dispatchEvent) {
             window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
         }
-        if (window.chart) window.chart.isLoading = false;
+
+        if (window.chart) window.chart.render();
     }
 }
 

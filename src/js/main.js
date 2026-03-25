@@ -1,4 +1,4 @@
-import { TradingChart } from '../../Chartify/lib/Chartify.js';
+import Chartify from '../../Chartify/lib/Chartify.js';
 import { bulkSyncDrawingTools, getDrawingTools, searchStock, findStock } from './service.js';
 import { ToolbarManager } from './toolbar.js';
 import { SidebarController } from './sidebar.js';
@@ -47,7 +47,7 @@ window.setSearchTicker = setSearchTicker;
 // Initialize the managers when DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
     // Instantiate core chart
-    window.chart = new TradingChart('chart-container', {
+    window.chart = new Chartify('chart-container', {
         timeframe: '1d',
         isShowDrawing: true,
         onSync: bulkSyncDrawingTools,
@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.sidebarController = new SidebarController();
 
     // Context menu and tool settings depend on window.chart being fully initialized
-    // (though TradingChart constructor is sync, some internals might not be ready)
+    // (though Chartify constructor is sync, some internals might not be ready)
     window.contextMenuController = new ContextMenuController(window.chart);
     window.globalContextMenuController = new GlobalContextMenuController(window.chart);
     window.toolSettingsController = new ToolSettingsController(window.chart);
@@ -296,6 +296,7 @@ function setupChartTypeSelector() {
             chartTypeBtn.classList.remove('active');
 
             if (window.chart) window.chart.setMode(mode);
+            if (window.chartSettingsController) window.chartSettingsController.showSymbolSection(mode);
         });
     });
 

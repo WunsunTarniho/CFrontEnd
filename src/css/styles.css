@@ -3427,6 +3427,14 @@ canvas {
     box-shadow: 0 0 0 1px #ffffff;
 }
 
+.checkerboard {
+    background-image: 
+        linear-gradient(var(--checkerboard-color, transparent), var(--checkerboard-color, transparent)),
+        conic-gradient(#2a2e39 90deg, #363a45 90deg 180deg, #2a2e39 180deg 270deg, #363a45 270deg);
+    background-size: 100% 100%, 8px 8px;
+    background-repeat: no-repeat, repeat;
+}
+
 /* Opacity Slider */
 .line-setting-section {
     margin-top: 12px;

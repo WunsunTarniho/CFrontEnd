@@ -184,14 +184,25 @@
                             </svg>
                             Point & Figure
                         </div>
+                        <div class="chart-type-item" data-mode="footprint">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="4" y="4" width="6" height="16" />
+                                <line x1="14" y1="6" x2="20" y2="6" stroke-width="1.5" />
+                                <line x1="14" y1="12" x2="20" y2="12" stroke-width="1.5" />
+                                <line x1="14" y1="18" x2="20" y2="18" stroke-width="1.5" />
+                            </svg>
+                            Volume Footprint
+                        </div>
                     </div>
                 </div>
                 <!-- Indicators -->
                 <div class="indicators-selector">
                     <button id="open-indicators-modal" class="indicators-btn">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M7 12l5 5L22 7" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M2 12l5 5L12 12" stroke-linecap="round" stroke-linejoin="round"/>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M7 12l5 5L22 7" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M2 12l5 5L12 12" stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                         <span>Indicators</span>
                     </button>
@@ -201,7 +212,8 @@
                 <div class="layout-selector-container" id="layout-selector-container">
                     <button class="layout-selector-btn" id="layout-menu-trigger">
                         <span id="current-layout-name">Default Workspace</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
                             <path d="M6 9l6 6 6-6" />
                         </svg>
                     </button>
@@ -234,7 +246,7 @@
                         <div class="layout-dropdown-item" id="layout-download">
                             <span>Download chart data...</span>
                         </div>
-                        
+
                         <div class="layout-dropdown-divider"></div>
                         <div id="layout-list-quick-switch" class="layout-list-quick-switch">
                             <!-- Dynamically populated -->
@@ -455,18 +467,25 @@
                 <div id="tool-dropdown" class="tool-dropdown"></div>
                 <!-- Table View Container -->
                 <!-- Seasonals View Container -->
-                <div id="seasonals-view-container" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 55; background-color: #0b0e11; color: #d1d4dc; flex-direction: column; overflow: hidden;">
+                <div id="seasonals-view-container"
+                    style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 55; background-color: #0b0e11; color: #d1d4dc; flex-direction: column; overflow: hidden;">
                     <!-- Seasonals Header -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-bottom: 1px solid #2a2e39; background: #131722;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-bottom: 1px solid #2a2e39; background: #131722;">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <div id="seasonals-view-logo" class="symbol-logo" style="width:24px; height:24px; font-size:12px;">B</div>
-                            <span style="font-size: 14px; font-weight: 600;" id="seasonals-view-title">Bitcoin / TetherUS</span>
+                            <div id="seasonals-view-logo" class="symbol-logo"
+                                style="width:24px; height:24px; font-size:12px;">B</div>
+                            <span style="font-size: 14px; font-weight: 600;" id="seasonals-view-title">Bitcoin /
+                                TetherUS</span>
                             <span style="color: #787b86; font-size: 12px; margin: 0 4px;">•</span>
                             <span style="font-size: 14px; color: #787b86;">Seasonals</span>
                         </div>
-                        <button id="seasonals-view-close" style="background: none; border: none; color: #d1d4dc; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px;">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                        <button id="seasonals-view-close"
+                            style="background: none; border: none; color: #d1d4dc; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                                <polyline points="9 22 9 12 15 12 15 22" />
                             </svg>
                             Back to chart
                         </button>
@@ -475,8 +494,16 @@
                     <!-- Seasonals Toolbar -->
                     <div class="seasonals-toolbar">
                         <div class="toolbar-left">
-                            <button class="toolbar-btn active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-2-2-5 5"/></svg></button>
-                            <button class="toolbar-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg></button>
+                            <button class="toolbar-btn active"><svg width="18" height="18" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 3v18h18" />
+                                    <path d="M18 9l-5 5-2-2-5 5" />
+                                </svg></button>
+                            <button class="toolbar-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                                    <path d="M3 9h18M9 3v18" />
+                                </svg></button>
                         </div>
                         <div class="toolbar-center">
                             <div class="year-slider-container">
@@ -493,74 +520,116 @@
                             </div>
                         </div>
                         <div class="toolbar-right">
-                            <button class="toolbar-action-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 9l-5 5-2-2-5 5"/><path d="M3 3v18h18"/></svg> Average</button>
+                            <button class="toolbar-action-btn"><svg width="14" height="14" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M18 9l-5 5-2-2-5 5" />
+                                    <path d="M3 3v18h18" />
+                                </svg> Average</button>
                             <div class="toolbar-dropdown">
                                 <span>Percent</span>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M6 9l6 6 6-6" />
+                                </svg>
                             </div>
-                            <button class="toolbar-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+                            <button class="toolbar-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2">
+                                    <path
+                                        d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                                    <circle cx="12" cy="13" r="4" />
+                                </svg></button>
                         </div>
                     </div>
 
                     <!-- Main Chart Area -->
-                    <div id="seasonals-view-main" style="flex: 1; position: relative; padding: 0; display: flex; overflow: hidden;">
+                    <div id="seasonals-view-main"
+                        style="flex: 1; position: relative; padding: 0; display: flex; overflow: hidden;">
                         <div id="seasonals-full-chart" style="flex: 1; position: relative; width: 100%;">
-                            <svg id="seasonals-full-svg" width="100%" height="100%" viewBox="0 0 1000 600" preserveAspectRatio="none">
+                            <svg id="seasonals-full-svg" width="100%" height="100%" viewBox="0 0 1000 600"
+                                preserveAspectRatio="none">
                                 <!-- Grid and Paths -->
                             </svg>
                             <div id="seasonals-full-tooltip" class="seasonal-tooltip" style="display: none;"></div>
-                            <div id="seasonals-full-labels" style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; z-index: 5; overflow: hidden;"></div>
+                            <div id="seasonals-full-labels"
+                                style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; z-index: 5; overflow: hidden;">
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div id="table-view-container" class="table-view-custom-scrollbar" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; background-color: #131722; color: #d1d4dc; flex-direction: column; overflow: hidden;">
+                <div id="table-view-container" class="table-view-custom-scrollbar"
+                    style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; background-color: #131722; color: #d1d4dc; flex-direction: column; overflow: hidden;">
                     <!-- Table Header -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-bottom: 1px solid #2a2e39;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-bottom: 1px solid #2a2e39;">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="#F7931A" stroke="none">
-                                <circle cx="12" cy="12" r="10"/>
-                                <path d="M16 12c0 1.5-1.5 2.5-3 2.5H10v-5h3c1.5 0 3 1 3 2.5zm-6 3.5h3.5c2.5 0 4.5-1.5 4.5-3.5 0-1.2-.6-2.2-1.6-2.8.8-.5 1.3-1.4 1.3-2.5 0-2-1.8-3.5-4.2-3.5H10v12zM12 5v2m0 10v2M9 5v2m0 10v2" fill="#fff"/>
+                                <circle cx="12" cy="12" r="10" />
+                                <path
+                                    d="M16 12c0 1.5-1.5 2.5-3 2.5H10v-5h3c1.5 0 3 1 3 2.5zm-6 3.5h3.5c2.5 0 4.5-1.5 4.5-3.5 0-1.2-.6-2.2-1.6-2.8.8-.5 1.3-1.4 1.3-2.5 0-2-1.8-3.5-4.2-3.5H10v12zM12 5v2m0 10v2M9 5v2m0 10v2"
+                                    fill="#fff" />
                             </svg>
-                            <span style="font-size: 14px; font-weight: 600;" id="table-view-title">Bitcoin / TetherUS</span>
+                            <span style="font-size: 14px; font-weight: 600;" id="table-view-title">Bitcoin /
+                                TetherUS</span>
                             <span style="color: #787b86; font-size: 12px; margin: 0 4px;">•</span>
                             <span style="font-size: 14px;">Table view</span>
                         </div>
-                        <button id="table-view-close" style="background: none; border: none; color: #d1d4dc; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <button id="table-view-close"
+                            style="background: none; border: none; color: #d1d4dc; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 4px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
                                 <path d="M15 18l-6-6 6-6" />
                             </svg>
                             Back to chart
                         </button>
                     </div>
                     <!-- Secondary Header -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-bottom: 1px solid #2a2e39;">
-                        <button style="background: none; border: none; color: #d1d4dc; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; border-bottom: 1px solid #2a2e39;">
+                        <button
+                            style="background: none; border: none; color: #d1d4dc; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                                 <polyline points="7 10 12 15 17 10" />
                                 <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
                             Download data
                         </button>
-                        <div style="display: flex; flex-direction: column; align-items: center; flex: 1; position: relative;">
+                        <div
+                            style="display: flex; flex-direction: column; align-items: center; flex: 1; position: relative;">
                             <div style="display: flex; align-items: center; gap: 6px;">
-                                <span style="font-size: 12px; font-weight: 600;" id="table-view-subtitle">BTCUSDT - Binance</span>
-                                <div style="width: 6px; height: 6px; border-radius: 50%; background-color: #22ab94;"></div>
+                                <span style="font-size: 12px; font-weight: 600;" id="table-view-subtitle">BTCUSDT -
+                                    Binance</span>
+                                <div style="width: 6px; height: 6px; border-radius: 50%; background-color: #22ab94;">
+                                </div>
                             </div>
                         </div>
                     </div>
                     <!-- Table Scroll Area -->
                     <div style="flex: 1; overflow-y: auto;">
-                        <table style="width: 100%; border-collapse: collapse; text-align: right; font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;">
+                        <table
+                            style="width: 100%; border-collapse: collapse; text-align: right; font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;">
                             <thead style="position: sticky; top: 0; background-color: #131722; z-index: 10;">
                                 <tr>
-                                    <th id="table-view-date-header" style="text-align: left; padding: 16px 16px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39; min-width: 90px;">Date • 1D</th>
-                                    <th style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">Open</th>
-                                    <th style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">High</th>
-                                    <th style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">Low</th>
-                                    <th style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">Close</th>
-                                    <th style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">Change</th>
+                                    <th id="table-view-date-header"
+                                        style="text-align: left; padding: 16px 16px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39; min-width: 90px;">
+                                        Date • 1D</th>
+                                    <th
+                                        style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">
+                                        Open</th>
+                                    <th
+                                        style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">
+                                        High</th>
+                                    <th
+                                        style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">
+                                        Low</th>
+                                    <th
+                                        style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">
+                                        Close</th>
+                                    <th
+                                        style="padding: 16px 24px; color: #787b86; font-weight: normal; border-bottom: 1px solid #2a2e39;">
+                                        Change</th>
                                 </tr>
                             </thead>
                             <tbody id="table-view-body">
@@ -606,16 +675,36 @@
                                     <div id="detail-symbol">BTCUSDT</div>
                                 </div>
                                 <div class="detail-actions">
-                                    <button class="action-btn" title="Layout"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></button>
-                                    <button class="action-btn" title="Note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                                    <button class="action-btn" title="More"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+                                    <button class="action-btn" title="Layout"><svg width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <rect x="3" y="3" width="7" height="7" />
+                                            <rect x="14" y="3" width="7" height="7" />
+                                            <rect x="14" y="14" width="7" height="7" />
+                                            <rect x="3" y="14" width="7" height="7" />
+                                        </svg></button>
+                                    <button class="action-btn" title="Note"><svg width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                        </svg></button>
+                                    <button class="action-btn" title="More"><svg width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="1" />
+                                            <circle cx="19" cy="12" r="1" />
+                                            <circle cx="5" cy="12" r="1" />
+                                        </svg></button>
                                 </div>
                             </div>
 
                             <!-- Breadcrumbs -->
                             <div class="detail-breadcrumbs">
                                 <span id="detail-full-name">Bitcoin / TetherUS</span>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left: 4px; opacity: 0.6;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" style="margin-left: 4px; opacity: 0.6;">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
                                 <span class="dot-separator">•</span>
                                 <span id="detail-exchange">BINANCE</span>
                             </div>
@@ -648,21 +737,28 @@
                             <!-- News Bar -->
                             <div class="detail-news-bar">
                                 <div class="news-icon-container">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                                    </svg>
                                 </div>
                                 <div class="news-content">
                                     <span id="news-time">3 hours ago</span>
                                     <span class="news-sep">•</span>
-                                    <span id="news-headline" class="news-text">Latest market updates and trends...</span>
+                                    <span id="news-headline" class="news-text">Latest market updates and
+                                        trends...</span>
                                 </div>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.6;"><path d="M9 18l6-6-6-6"/></svg>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" style="opacity: 0.6;">
+                                    <path d="M9 18l6-6-6-6" />
+                                </svg>
                             </div>
 
                             <!-- Key Stats -->
                             <div class="detail-section">
                                 <div class="section-title">Key stats</div>
                                 <div class="detail-row">Volume <span id="detail-volume">0.00</span></div>
-                                <div class="detail-row">Average Volume (30D) <span id="detail-avg-volume">0.00</span></div>
+                                <div class="detail-row">Average Volume (30D) <span id="detail-avg-volume">0.00</span>
+                                </div>
                             </div>
 
                             <!-- Performance Grid -->
@@ -711,9 +807,12 @@
                                     </div>
                                 </div>
                                 <div class="seasonals-legend">
-                                    <div class="legend-item"><span class="dot" style="background:#2962ff"></span> 2026</div>
-                                    <div class="legend-item"><span class="dot" style="background:#089981"></span> 2025</div>
-                                    <div class="legend-item"><span class="dot" style="background:#f7931a"></span> 2024</div>
+                                    <div class="legend-item"><span class="dot" style="background:#2962ff"></span> 2026
+                                    </div>
+                                    <div class="legend-item"><span class="dot" style="background:#089981"></span> 2025
+                                    </div>
+                                    <div class="legend-item"><span class="dot" style="background:#f7931a"></span> 2024
+                                    </div>
                                 </div>
                                 <button class="more-seasonals-btn">More seasonals</button>
                             </div>
@@ -749,24 +848,34 @@
                         </svg>
                     </button>
                     <div style="flex: 1;"></div>
+                </div>
             </div>
-        </div>
 
             <!-- ZenScript Editor Panel -->
             <div id="script-editor-panel" style="display: none;">
                 <div class="editor-header">
                     <div class="editor-title">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
                             <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />
                         </svg>
-                        <input type="text" id="editor-script-name" class="editor-name-input" value="New Indicator" spellcheck="false" autocomplete="off">
+                        <input type="text" id="editor-script-name" class="editor-name-input" value="New Indicator"
+                            spellcheck="false" autocomplete="off">
                     </div>
                     <div class="editor-actions">
                         <button id="editor-new-btn" class="editor-icon-btn" title="New script">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M12 5v14M5 12h14" />
+                            </svg>
                         </button>
                         <button id="editor-save-btn" class="editor-icon-btn" title="Save script">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+                                <polyline points="17 21 17 13 7 13 7 21" />
+                                <polyline points="7 3 7 8 15 8" />
+                            </svg>
                         </button>
                         <button id="editor-add-chart-btn" class="editor-btn">Add to Chart</button>
                         <button id="editor-close-btn" class="editor-close">&times;</button>
@@ -857,7 +966,8 @@
         <div class="context-menu-item" id="global-menu-settings">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                <path
+                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
             Settings...
         </div>
@@ -1214,15 +1324,13 @@
                         <div id="settings-section-fibonacci-title" class="settings-section-title">Fibonacci</div>
                         <!-- Regular Fibonacci Only (Retracement, etc.) -->
                         <div id="fib-reg-settings" style="display: flex; flex-direction: column; gap: 15px;">
-                            <div id="fib-main-color-row" class="settings-row"
-                                style="margin-bottom: 6px; display:none;">
+                            <div id="fib-main-color-row" class="settings-row" style="margin-bottom: 6px; display:none;">
                                 <div class="settings-label">Color</div>
                                 <div class="settings-input-container">
                                     <input type="color" id="fib-main-color" class="settings-color-picker">
                                 </div>
                             </div>
-                            <div id="fib-spiral-ccw-row" class="settings-row"
-                                style="margin-bottom: 6px; display:none;">
+                            <div id="fib-spiral-ccw-row" class="settings-row" style="margin-bottom: 6px; display:none;">
                                 <div class="settings-label">Counterclockwise</div>
                                 <div class="settings-input-container">
                                     <input type="checkbox" id="fib-spiral-ccw">
@@ -1918,7 +2026,7 @@
                     </div>
 
                     <!-- ========== PITCHFORK SECTION ========== -->
-                     <div id="settings-section-pitchfork" class="settings-section" style="display:none;">
+                    <div id="settings-section-pitchfork" class="settings-section" style="display:none;">
                         <div class="settings-row" style="margin-top: 6px; margin-bottom: 6px;">
                             <div class="settings-label">Extend lines</div>
                             <div class="settings-input-container">
@@ -2275,7 +2383,7 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
             <span style="font-size:15px;font-weight:700;color:#ffffff;letter-spacing:0.02em;">Timeframe</span>
             <button onclick="window.toggleTfPopup()"
-                style="background:none;border:none;color:#787b86;font-size:22px;cursor:pointer;line-height:1;padding:4px;display:flex;align-items:center;justify-content:center;transition:color 0.2s;" 
+                style="background:none;border:none;color:#787b86;font-size:22px;cursor:pointer;line-height:1;padding:4px;display:flex;align-items:center;justify-content:center;transition:color 0.2s;"
                 onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#787b86'">&times;</button>
         </div>
         <div class="tf-group-label" id="tf-seconds-label">Seconds</div>
@@ -2327,29 +2435,36 @@
                 <h2>Indicators, metrics, and strategies</h2>
                 <button class="modal-close" id="close-indicators-modal">&times;</button>
             </div>
-            
+
             <div class="indicator-modal-body">
                 <div class="modal-sidebar">
                     <div class="search-container">
-                        <svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+                        <svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                            fill="none">
                             <circle cx="11" cy="11" r="8" />
                             <line x1="21" y1="21" x2="16.65" y2="16.65" />
                         </svg>
                         <input type="text" id="indicator-search" placeholder="Search">
                     </div>
-                    
+
                     <div class="sidebar-groups">
                         <div class="sidebar-group">
                             <label>PERSONAL</label>
                             <div class="sidebar-item active" data-tab="my-scripts">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                    <circle cx="12" cy="7" r="4" />
                                 </svg>
                                 My scripts
                             </div>
                             <div class="sidebar-item" data-tab="invite-only">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                    <circle cx="9" cy="7" r="4" />
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                                 </svg>
                                 Invite-only
                             </div>
@@ -2358,7 +2473,8 @@
                         <div class="sidebar-group">
                             <label>BUILT-IN</label>
                             <div class="sidebar-item" data-tab="technicals">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
                                     <path d="M3 18 L 10 10 L 16 16 L 21 6" />
                                 </svg>
                                 Technicals
@@ -2366,7 +2482,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="modal-content">
                     <div id="indicators-list-empty" class="empty-state">
                         <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="#2a2e39" stroke-width="1">
@@ -2394,44 +2510,63 @@
             <div class="chart-settings-main">
                 <div class="chart-settings-sidebar">
                     <div class="chart-settings-tab" data-tab="symbol">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 3v18h18" /><path d="M18 17l-6-6-4 4-5-5" />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M3 3v18h18" />
+                            <path d="M18 17l-6-6-4 4-5-5" />
                         </svg>
                         Symbol
                     </div>
                     <div class="chart-settings-tab" data-tab="status-line">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 3h18v18H3z" /><path d="M3 9h18" />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M3 3h18v18H3z" />
+                            <path d="M3 9h18" />
                         </svg>
                         Status line
                     </div>
                     <div class="chart-settings-tab" data-tab="scales">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 3v18h18" /><path d="M7 14l5-5 5 5" />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M3 3v18h18" />
+                            <path d="M7 14l5-5 5 5" />
                         </svg>
                         Scales and lines
                     </div>
                     <div class="chart-settings-tab" data-tab="canvas">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 3v18" /><path d="M3 8h18" />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <path d="M8 3v18" />
+                            <path d="M3 8h18" />
                         </svg>
                         Canvas
                     </div>
                     <div class="chart-settings-tab active" data-tab="trading">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M16 3h5v5" /><path d="M21 3L14 10" /><path d="M18 14l-4 4-4-4" /><path d="M14 18v5" />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M16 3h5v5" />
+                            <path d="M21 3L14 10" />
+                            <path d="M18 14l-4 4-4-4" />
+                            <path d="M14 18v5" />
                         </svg>
                         Trading
                     </div>
                     <div class="chart-settings-tab" data-tab="alerts">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                         </svg>
                         Alerts
                     </div>
                     <div class="chart-settings-tab" data-tab="events">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
                         </svg>
                         Events
                     </div>
@@ -2446,7 +2581,8 @@
                                 <div class="settings-group-title">Candles</div>
                                 <div class="settings-row">
                                     <input type="checkbox" id="setting-candle-color-prev-close" checked>
-                                    <label for="setting-candle-color-prev-close">Color bars based on previous close</label>
+                                    <label for="setting-candle-color-prev-close">Color bars based on previous
+                                        close</label>
                                 </div>
                                 <div class="settings-row">
                                     <input type="checkbox" id="setting-candle-body" checked>
@@ -2520,29 +2656,36 @@
                                 </div>
                                 <div class="settings-row">
                                     <label style="flex: none; width: 100px;">Color</label>
-                                    <select id="setting-line-color-type" class="settings-select" style="width: auto; margin-right: 8px;">
+                                    <select id="setting-line-color-type" class="settings-select"
+                                        style="width: auto; margin-right: 8px;">
                                         <option value="solid">Solid</option>
                                         <option value="gradient">Gradient</option>
                                     </select>
                                     <div style="display: flex; align-items: center; gap: 8px;">
                                         <div id="setting-line-advanced"></div>
                                         <div id="setting-line-advanced-2" style="display: none;"></div>
-                                        <div id="setting-line-width-container" style="display: none; border-left: 1px solid #2a2e39; padding-left: 8px;">
+                                        <div id="setting-line-width-container"
+                                            style="display: none; border-left: 1px solid #2a2e39; padding-left: 8px;">
                                             <div class="custom-width-picker" id="setting-line-width-trigger">
-                                                <div class="custom-width-picker-line" id="setting-line-width-preview" style="height: 2px; background-color: #787b86;"></div>
+                                                <div class="custom-width-picker-line" id="setting-line-width-preview"
+                                                    style="height: 2px; background-color: #787b86;"></div>
                                             </div>
                                             <div class="custom-width-dropdown" id="setting-line-width-dropdown">
                                                 <div class="custom-width-option" data-value="1">
-                                                    <div class="line-hint" style="height: 1px; background-color: #787b86;"></div>
+                                                    <div class="line-hint"
+                                                        style="height: 1px; background-color: #787b86;"></div>
                                                 </div>
                                                 <div class="custom-width-option" data-value="2">
-                                                    <div class="line-hint" style="height: 2px; background-color: #787b86;"></div>
+                                                    <div class="line-hint"
+                                                        style="height: 2px; background-color: #787b86;"></div>
                                                 </div>
                                                 <div class="custom-width-option" data-value="3">
-                                                    <div class="line-hint" style="height: 3px; background-color: #787b86;"></div>
+                                                    <div class="line-hint"
+                                                        style="height: 3px; background-color: #787b86;"></div>
                                                 </div>
                                                 <div class="custom-width-option" data-value="4">
-                                                    <div class="line-hint" style="height: 4px; background-color: #787b86;"></div>
+                                                    <div class="line-hint"
+                                                        style="height: 4px; background-color: #787b86;"></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -2576,6 +2719,450 @@
                                     <div style="display: flex; align-items: center; gap: 8px;">
                                         <div id="setting-area-fill-advanced-1"></div>
                                         <div id="setting-area-fill-advanced-2"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- HLC AREA SECTION -->
+                        <div id="symbol-section-hlc-area" class="settings-mode-section" style="display:none;">
+                            <div class="settings-group">
+                                <div class="settings-group-title">HLC Area</div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 8px; width: 100px;">
+                                        <input type="checkbox" id="setting-hlc-high-show" checked>
+                                        <label for="setting-hlc-high-show">High line</label>
+                                    </div>
+                                    <div id="setting-hlc-high-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 8px; width: 100px;">
+                                        <input type="checkbox" id="setting-hlc-low-show" checked>
+                                        <label for="setting-hlc-low-show">Low line</label>
+                                    </div>
+                                    <div id="setting-hlc-low-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 100px;">Close line</label>
+                                    <div id="setting-hlc-close-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 100px;">Fill</label>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <div id="setting-hlc-fill-up-advanced"></div>
+                                        <div id="setting-hlc-fill-down-advanced"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- BASELINE SECTION -->
+                        <div id="symbol-section-baseline" class="settings-mode-section" style="display:none;">
+                            <div class="settings-group">
+                                <div class="settings-group-title">Baseline</div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 100px;">Price source</label>
+                                    <select id="setting-baseline-source" class="settings-select" style="flex: 1;">
+                                        <option value="open">Open</option>
+                                        <option value="high">High</option>
+                                        <option value="low">Low</option>
+                                        <option value="close">Close</option>
+                                        <option value="hl2">(H + L) / 2</option>
+                                        <option value="hlc3">(H + L + C) / 3</option>
+                                        <option value="ohlc4">(O + H + L + C) / 4</option>
+                                    </select>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 100px;">Top line</label>
+                                    <div id="setting-baseline-top-line-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 100px;">Bottom line</label>
+                                    <div id="setting-baseline-bottom-line-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 100px;">Fill top area</label>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <div id="setting-baseline-fill-top-1-advanced"></div>
+                                        <div id="setting-baseline-fill-top-2-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 100px;">Fill bottom area</label>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <div id="setting-baseline-fill-bottom-1-advanced"></div>
+                                        <div id="setting-baseline-fill-bottom-2-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 100px;">Base level</label>
+                                    <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                                        <input type="number" id="setting-baseline-level" class="settings-input" style="flex: 1;" value="50" min="0" max="100">
+                                        <span style="color: #8D9BBA;">%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- HIGH-LOW SECTION -->
+                        <div id="symbol-section-high-low" class="settings-mode-section" style="display:none;">
+                            <div class="settings-group">
+                                <div class="settings-group-title">High-Low</div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 8px; width: 100px;">
+                                        <input type="checkbox" id="setting-high-low-body-show" checked>
+                                        <label for="setting-high-low-body-show">Body</label>
+                                    </div>
+                                    <div id="setting-high-low-body-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 8px; width: 100px;">
+                                        <input type="checkbox" id="setting-high-low-border-show" checked>
+                                        <label for="setting-high-low-border-show">Borders</label>
+                                    </div>
+                                    <div id="setting-high-low-border-advanced"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- HEIKIN ASHI SECTION -->
+                        <div id="symbol-section-heikin-ashi" class="settings-mode-section" style="display:none;">
+                            <div class="settings-group">
+                                <div class="settings-group-title">Heikin Ashi</div>
+                                <div class="settings-row">
+                                    <input type="checkbox" id="setting-ha-real-price" class="settings-checkbox">
+                                    <label for="setting-ha-real-price" style="margin-left: 8px;">Real prices on price scale (instead of Heikin-Ashi price)</label>
+                                </div>
+                                <div class="settings-row">
+                                    <input type="checkbox" id="setting-ha-prev-close" class="settings-checkbox">
+                                    <label for="setting-ha-prev-close" style="margin-left: 8px;">Color bars based on previous close</label>
+                                </div>
+                                <div class="settings-row" style="margin-top: 8px;">
+                                    <div style="display: flex; align-items: center; gap: 8px; width: 100px; flex: none;">
+                                        <input type="checkbox" id="setting-ha-body-show" checked>
+                                        <label for="setting-ha-body-show">Body</label>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-ha-body-up-advanced"></div>
+                                        <div id="setting-ha-body-down-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 8px; width: 100px; flex: none;">
+                                        <input type="checkbox" id="setting-ha-borders-show" checked>
+                                        <label for="setting-ha-borders-show">Borders</label>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-ha-borders-up-advanced"></div>
+                                        <div id="setting-ha-borders-down-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 8px; width: 100px; flex: none;">
+                                        <input type="checkbox" id="setting-ha-wick-show" checked>
+                                        <label for="setting-ha-wick-show">Wick</label>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-ha-wick-up-advanced"></div>
+                                        <div id="setting-ha-wick-down-advanced"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RENKO SECTION -->
+                        <div id="symbol-section-renko" class="settings-mode-section" style="display:none;">
+                            <div class="settings-group">
+                                <div class="settings-group-title">Renko</div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Up bars</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-renko-up-body-advanced"></div>
+                                        <div id="setting-renko-up-border-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Down bars</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-renko-down-body-advanced"></div>
+                                        <div id="setting-renko-down-border-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Projection up bars</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-renko-proj-up-body-advanced"></div>
+                                        <div id="setting-renko-proj-up-border-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Projection down bars</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-renko-proj-down-body-advanced"></div>
+                                        <div id="setting-renko-proj-down-border-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 8px; width: 150px; flex: none;">
+                                        <input type="checkbox" id="setting-renko-wick-show" checked>
+                                        <label for="setting-renko-wick-show">Wick</label>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-renko-wick-up-advanced"></div>
+                                        <div id="setting-renko-wick-down-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Source</label>
+                                    <select id="setting-renko-source" class="settings-select" style="flex: 1;">
+                                        <option value="close">Close</option>
+                                        <option value="open">Open</option>
+                                        <option value="high">High</option>
+                                        <option value="low">Low</option>
+                                        <option value="hl2">HL2</option>
+                                        <option value="hlc3">HLC3</option>
+                                        <option value="ohlc4">OHLC4</option>
+                                    </select>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Box size assignment method</label>
+                                    <select id="setting-renko-box-method" class="settings-select" style="flex: 1;">
+                                        <option value="atr">ATR</option>
+                                        <option value="traditional">Traditional</option>
+                                        <option value="percentage">Percentage</option>
+                                    </select>
+                                </div>
+                                <div id="setting-renko-atr-row" class="settings-row">
+                                    <label style="flex: none; width: 150px;">ATR length</label>
+                                    <input type="number" id="setting-renko-atr-length" class="settings-input" style="flex: 1;" value="14" min="1">
+                                </div>
+                                <div id="setting-renko-box-row" class="settings-row" style="display:none;">
+                                    <label style="flex: none; width: 150px;">Box size</label>
+                                    <input type="number" id="setting-renko-box-size" class="settings-input" style="flex: 1;" value="1.0" step="0.1" min="0.00000001">
+                                </div>
+                                <div id="setting-renko-perc-row" class="settings-row" style="display:none;">
+                                    <label style="flex: none; width: 150px;">Percentage</label>
+                                    <input type="number" id="setting-renko-perc-value" class="settings-input" style="flex: 1;" value="1.0" step="0.01" min="0.00000001">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- LINE BREAK GROUP -->
+                        <div id="symbol-section-line-break" class="settings-mode-section" style="display: none;">
+                            <div class="settings-group">
+                                <div class="settings-group-title">Line Break</div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Up bars</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-lb-up-body-advanced"></div>
+                                        <div id="setting-lb-up-border-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Down bars</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-lb-down-body-advanced"></div>
+                                        <div id="setting-lb-down-border-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Projection up bars</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-lb-proj-up-body-advanced"></div>
+                                        <div id="setting-lb-proj-up-border-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Projection down bars</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-lb-proj-down-body-advanced"></div>
+                                        <div id="setting-lb-proj-down-border-advanced"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Number of line</label>
+                                    <input type="number" id="setting-lb-number" class="settings-input" style="flex: 1;" value="3" min="1">
+                                </div>
+                            </div>
+                        </div>
+ 
+                        <!-- KAGI GROUP -->
+                        <div id="symbol-section-kagi" class="settings-mode-section" style="display: none;">
+                            <div class="settings-group">
+                                <div class="settings-group-title">Kagi</div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Up bars</label>
+                                    <div id="setting-kagi-up-body-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Down bars</label>
+                                    <div id="setting-kagi-down-body-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Projection up bars</label>
+                                    <div id="setting-kagi-proj-up-body-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Projection down bars</label>
+                                    <div id="setting-kagi-proj-down-body-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Box size assignment method</label>
+                                    <select id="setting-kagi-box-method" class="settings-select" style="flex: 1;">
+                                        <option value="atr">ATR</option>
+                                        <option value="traditional">Traditional</option>
+                                        <option value="percentage">Percentage</option>
+                                    </select>
+                                </div>
+                                <div id="setting-kagi-atr-row" class="settings-row">
+                                    <label style="flex: none; width: 150px;">ATR length</label>
+                                    <input type="number" id="setting-kagi-atr-length" class="settings-input" style="flex: 1;" value="14" min="1">
+                                </div>
+                                <div id="setting-kagi-box-row" class="settings-row" style="display:none;">
+                                    <label style="flex: none; width: 150px;">Box size</label>
+                                    <input type="number" id="setting-kagi-box-size" class="settings-input" style="flex: 1;" value="1.0" step="0.1" min="0.00000001">
+                                </div>
+                                <div id="setting-kagi-perc-row" class="settings-row" style="display:none;">
+                                    <label style="flex: none; width: 150px;">Percentage</label>
+                                    <input type="number" id="setting-kagi-perc-value" class="settings-input" style="flex: 1;" value="1.0" step="0.01" min="0.00000001">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- POINT & FIGURE GROUP -->
+                        <div id="symbol-section-pnf" class="settings-mode-section" style="display: none;">
+                            <div class="settings-group">
+                                <div class="settings-group-title">Point & Figure</div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Up bars</label>
+                                    <div id="setting-pnf-up-body-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Down bars</label>
+                                    <div id="setting-pnf-down-body-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Projection up bars</label>
+                                    <div id="setting-pnf-proj-up-body-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Projection down bars</label>
+                                    <div id="setting-pnf-proj-down-body-advanced"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Source</label>
+                                    <select id="setting-pnf-source" class="settings-select" style="flex: 1;">
+                                        <option value="open">Open</option>
+                                        <option value="high">High</option>
+                                        <option value="low">Low</option>
+                                        <option value="close">Close</option>
+                                        <option value="hl2">HL2</option>
+                                        <option value="hlc3">HLC3</option>
+                                        <option value="ohlc4">OHLC4</option>
+                                    </select>
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Box size assignment method</label>
+                                    <select id="setting-pnf-box-method" class="settings-select" style="flex: 1;">
+                                        <option value="atr">ATR</option>
+                                        <option value="traditional">Traditional</option>
+                                    </select>
+                                </div>
+                                <div id="setting-pnf-atr-row" class="settings-row">
+                                    <label style="flex: none; width: 150px;">ATR length</label>
+                                    <input type="number" id="setting-pnf-atr-length" class="settings-input" style="flex: 1;" value="14" min="1">
+                                </div>
+                                <div id="setting-pnf-box-row" class="settings-row" style="display:none;">
+                                    <label style="flex: none; width: 150px;">Box size</label>
+                                    <input type="number" id="setting-pnf-box-size" class="settings-input" style="flex: 1;" value="1.0" step="0.1" min="0.00000001">
+                                </div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 150px;">Reversal amount</label>
+                                    <input type="number" id="setting-pnf-reversal" class="settings-input" style="flex: 1;" value="3" min="1">
+                                </div>
+                                <div class="settings-row">
+                                    <label class="settings-checkbox-container">
+                                        <input type="checkbox" id="setting-pnf-one-step-back">
+                                        <span class="settings-checkbox-label">One step back building</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FOOTPRINT GROUP -->
+                        <div id="symbol-section-footprint" class="settings-mode-section" style="display: none;">
+                            <div class="settings-group">
+                                <div class="settings-group-title">Volume Footprint</div>
+                                
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 120px;">Row size</label>
+                                    <select id="setting-footprint-row-size-method" style="flex: 1;">
+                                        <option value="atr">Auto (ATR)</option>
+                                        <option value="manual">Manual</option>
+                                    </select>
+                                </div>
+                                <div id="setting-footprint-atr-row" class="settings-row">
+                                    <label style="flex: none; width: 120px;">ATR length</label>
+                                    <input type="number" id="setting-footprint-atr-length" class="settings-input" style="flex: 1;" value="25" min="1">
+                                </div>
+                                <div id="setting-footprint-manual-row" class="settings-row" style="display: none;">
+                                    <label style="flex: none; width: 120px;">Ticks per row</label>
+                                    <input type="number" id="setting-footprint-row-size-manual" class="settings-input" style="flex: 1;" value="100" step="1" min="1">
+                                </div>
+
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 120px;">Display</label>
+                                    <select id="setting-footprint-display-style" style="flex: 1;">
+                                        <option value="profile">Profile</option>
+                                        <option value="numbers">Numbers</option>
+                                        <option value="both">Both</option>
+                                    </select>
+                                </div>
+
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 120px;">Type</label>
+                                    <select id="setting-footprint-type" style="flex: 1;">
+                                        <option value="buy-sell">Buy and sell</option>
+                                        <option value="total">Total</option>
+                                        <option value="delta">Delta</option>
+                                    </select>
+                                </div>
+
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                        <input type="checkbox" id="setting-footprint-apply-gradient" checked style="margin: 0; cursor: pointer;">
+                                        <label for="setting-footprint-apply-gradient" style="margin: 0; cursor: pointer; user-select: none;">Apply gradient to background</label>
+                                    </div>
+                                </div>
+
+                                <div class="settings-row" style="align-items: flex-start; margin-top: 10px;">
+                                    <label style="flex: none; width: 120px; margin-top: 8px;">Sell background</label>
+                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                        <div id="setting-footprint-sell-bg-1"></div>
+                                        <div id="setting-footprint-sell-bg-2"></div>
+                                        <div id="setting-footprint-sell-bg-3"></div>
+                                        <div id="setting-footprint-sell-bg-4"></div>
+                                    </div>
+                                </div>
+
+                                <div class="settings-row" style="align-items: flex-start; margin-top: 10px;">
+                                    <label style="flex: none; width: 120px; margin-top: 8px;">Buy background</label>
+                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                        <div id="setting-footprint-buy-bg-1"></div>
+                                        <div id="setting-footprint-buy-bg-2"></div>
+                                        <div id="setting-footprint-buy-bg-3"></div>
+                                        <div id="setting-footprint-buy-bg-4"></div>
+                                    </div>
+                                </div>
+
+                                <div class="settings-row" style="margin-top: 10px;">
+                                    <div style="display: flex; align-items: center; gap: 8px; width: 120px; flex: none; cursor: pointer;">
+                                        <input type="checkbox" id="setting-footprint-value-area" checked style="margin: 0; cursor: pointer;">
+                                        <label for="setting-footprint-value-area" style="margin: 0; cursor: pointer; user-select: none;">Value area</label>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                                        <input type="number" id="setting-footprint-value-area-percent" class="settings-input" style="flex: 1;" value="70" min="1" max="100">
+                                        <span style="color: #aaa;">%</span>
                                     </div>
                                 </div>
                             </div>
@@ -2615,7 +3202,8 @@
                             <div class="settings-group-title">Background</div>
                             <div class="settings-row">
                                 <label style="flex: none; width: 100px;">Type</label>
-                                <select id="setting-bg-type" class="settings-select" style="width: auto; margin-right: 8px;">
+                                <select id="setting-bg-type" class="settings-select"
+                                    style="width: auto; margin-right: 8px;">
                                     <option value="solid">Solid</option>
                                     <option value="gradient">Gradient</option>
                                 </select>
@@ -2654,13 +3242,14 @@
                                 <label for="setting-buy-sell-buttons">Buy/sell buttons</label>
                             </div>
                             <div class="settings-description">Displays buy and sell buttons directly on the chart</div>
-                            
+
                             <div class="settings-row">
                                 <input type="checkbox" id="setting-one-click-trading">
                                 <label for="setting-one-click-trading">One-click trading</label>
                             </div>
-                            <div class="settings-description">Instantly place, edit, cancel orders or close positions without confirmation</div>
-                            
+                            <div class="settings-description">Instantly place, edit, cancel orders or close positions
+                                without confirmation</div>
+
                             <div class="settings-row">
                                 <input type="checkbox" id="setting-execution-sound">
                                 <label for="setting-execution-sound">Execution sound</label>
@@ -2673,23 +3262,25 @@
                                 <input type="checkbox" id="setting-positions-orders" checked>
                                 <label for="setting-positions-orders">Positions and orders</label>
                             </div>
-                            
+
                             <div style="padding-left: 28px;">
                                 <div class="settings-row">
                                     <input type="checkbox" id="setting-reverse-button" checked>
                                     <label for="setting-reverse-button">Reverse position button</label>
                                 </div>
-                                <div class="settings-description">Adds the reverse button next to the open position on the chart</div>
+                                <div class="settings-description">Adds the reverse button next to the open position on
+                                    the chart</div>
                             </div>
-                            
+
                             <div class="settings-row">
                                 <input type="checkbox" id="setting-profit-loss" checked>
                                 <label for="setting-profit-loss">Profit and loss value</label>
                             </div>
-                            
+
                             <div class="settings-row">
                                 <input type="checkbox" id="setting-extended-lines" checked>
-                                <label for="setting-extended-lines">Extended price lines across the entire chart width</label>
+                                <label for="setting-extended-lines">Extended price lines across the entire chart
+                                    width</label>
                             </div>
 
                             <div class="settings-row">
@@ -2708,7 +3299,8 @@
                 <div class="footer-left">
                     <button class="chart-settings-btn btn-template">
                         Template
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
                             <path d="M6 9l6 6 6-6" />
                         </svg>
                     </button>

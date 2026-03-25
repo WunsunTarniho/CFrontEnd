@@ -95,7 +95,7 @@ export class AdvancedLineSetting {
         const isCombined = this.options.showThickness || this.options.showStyle;
         triggerWrapper.innerHTML = `
             <div class="line-setting-trigger ${isCombined ? 'combined-trigger' : ''}" title="Settings">
-                <div class="line-setting-trigger-color"></div>
+                <div class="line-setting-trigger-color checkerboard"></div>
                 ${isCombined ? `<div class="trigger-line-preview"></div>` : ''}
             </div>
         `;
@@ -161,7 +161,7 @@ export class AdvancedLineSetting {
 
         pickerPopup.innerHTML = `
             <div class="picker-top-bar" style="display: flex; align-items: center; gap: 4px; margin-bottom: 12px; height: 24px;">
-                <div class="picker-preview" id="${this.popoverId}-picker-preview" style="width: 24px; height: 100%; border-radius: 4px; border: 1px solid #363a45; flex-shrink: 0;"></div>
+                <div class="picker-preview checkerboard" id="${this.popoverId}-picker-preview" style="width: 24px; height: 100%; border-radius: 4px; border: 1px solid #363a45; flex-shrink: 0;"></div>
                 <input type="text" class="picker-hex-input" id="${this.popoverId}-picker-hex" placeholder="FFFFFF" style="width: 70px; flex-shrink: 0; background: #2a2e39; border: 1px solid #363a45; color: #d1d4dc; padding: 4px; border-radius: 4px; font-size: 11px; font-family: monospace; height: 100%; box-sizing: border-box;" value="FFFFFF">
                 <button class="picker-add-btn" id="${this.popoverId}-picker-add" style="flex: 1; background: #f0f3fa; color: #131722; border: none; padding: 0 4px; border-radius: 4px; font-size: 10px; font-weight: 600; cursor: pointer; height: 100%; white-space: nowrap;">Add</button>
             </div>
@@ -189,8 +189,8 @@ export class AdvancedLineSetting {
     renderColorGrid() {
         return this.colors.map((c, i) => {
             let html = `
-                <div class="color-palette-item ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
-                     style="background: ${c}" 
+                <div class="color-palette-item checkerboard ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
+                     style="--checkerboard-color: ${c}" 
                      data-color="${c}"></div>
             `;
             if (i === 19) {
@@ -485,7 +485,7 @@ export class AdvancedLineSetting {
             svHandle.style.top = `${(1 - v) * 100}%`;
         }
         if (hueHandle) hueHandle.style.top = `${(h / 360) * 100}%`;
-        if (preview) preview.style.backgroundColor = hex;
+        if (preview) preview.style.setProperty('--checkerboard-color', hex);
         if (hexInput) {
             // Only update hex input if user is not typing in it
             if (document.activeElement !== hexInput) {
@@ -612,8 +612,8 @@ export class AdvancedLineSetting {
             const customGrid = document.getElementById(gridId);
             if (customGrid) {
                 const customColorsHtml = AdvancedLineSetting.customColors.map(c => `
-                    <div class="color-palette-item ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
-                         style="background: ${c}" 
+                    <div class="color-palette-item checkerboard ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
+                         style="--checkerboard-color: ${c}" 
                          data-color="${c}"></div>
                 `).join('') + `
                     <div class="color-palette-item add-custom-color" style="display: flex; align-items: center; justify-content: center; background: transparent; border: 1px dashed #363a45; position: relative;">
@@ -635,18 +635,25 @@ export class AdvancedLineSetting {
             btn.classList.toggle('active', btn.dataset.style === this.state.style);
         });
 
+        if (this.options.showOpacity) {
+            const slider = this.popover.querySelector('.opacity-slider');
+            const valueText = this.popover.querySelector('.opacity-value');
+            if (slider) slider.value = this.state.opacity * 100;
+            if (valueText) valueText.textContent = `${Math.round(this.state.opacity * 100)}%`;
+        }
+
         this.updateTriggerColor();
     }
 
     updateTriggerColor() {
         const triggerColor = this.container.querySelector('.line-setting-trigger-color');
         if (triggerColor) {
-            triggerColor.style.background = this.getColorWithOpacity();
+            triggerColor.style.setProperty('--checkerboard-color', this.getColorWithOpacity());
         }
 
         const linePreview = this.container.querySelector('.trigger-line-preview');
         if (linePreview) {
-            linePreview.style.background = this.getColorWithOpacity();
+            linePreview.style.backgroundColor = this.getColorWithOpacity();
             linePreview.style.height = `${this.state.thickness}px`;
         }
     }
@@ -696,6 +703,16 @@ export class AdvancedLineSetting {
             } else if (values.hexAlpha.length === 7) {
                 this.state.color = values.hexAlpha;
                 this.state.opacity = 1;
+            } else if (values.hexAlpha.startsWith('rgba')) {
+                const match = values.hexAlpha.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+                if (match) {
+                    const r = parseInt(match[1]).toString(16).padStart(2, '0');
+                    const g = parseInt(match[2]).toString(16).padStart(2, '0');
+                    const b = parseInt(match[3]).toString(16).padStart(2, '0');
+                    const a = match[4] ? parseFloat(match[4]) : 1;
+                    this.state.color = `#${r}${g}${b}`;
+                    this.state.opacity = a;
+                }
             }
         }
 
