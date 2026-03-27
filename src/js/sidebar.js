@@ -154,7 +154,17 @@ export class SidebarController {
                 }
             }
 
-            if (volumeEl) volumeEl.textContent = this.formatNumber(data.volume);
+            if (volumeEl) {
+                let displayVol = data.volume;
+                // Sync with chart daily candle if available to show "Today's Volume" instead of rolling 24h
+                if (window.chart && window.chart.rawData && window.chart.rawData.length > 0) {
+                    const latest = window.chart.rawData[window.chart.rawData.length - 1];
+                    if (window.chart.timeframe === '1d') {
+                        displayVol = latest.volume;
+                    }
+                }
+                volumeEl.textContent = this.formatNumber(displayVol);
+            }
 
             // Real-time Seasonals Sync
             const now = Date.now();
@@ -316,10 +326,10 @@ export class SidebarController {
     }
 
     formatNumber(num) {
+        if (num === null || num === undefined) return '0';
         if (num >= 1000000000) return (num / 1000000000).toFixed(2) + 'B';
         if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
-        if (num >= 1000) return (num / 1000).toFixed(2) + 'K';
-        return num.toFixed(2);
+        return Math.floor(num).toLocaleString();
     }
 
     setupTabLogic() {
@@ -1139,7 +1149,7 @@ export class SidebarController {
             path.setAttribute("class", "seasonal-path");
             path.setAttribute("stroke", colors[year]);
             if (year == currentYear) {
-                path.setAttribute("stroke-width", "3");
+                path.setAttribute("stroke-width", "1.5");
                 // Add pulsing marker at the end for current year
                 const lastIdx = data.length - 1;
                 const lx = getX(data[lastIdx].day);
@@ -1376,8 +1386,10 @@ export class SidebarController {
 
         svg.innerHTML = ''; // Clear
 
-        const sYear = startYear || this.currentStartYear;
-        const eYear = endYear || this.currentEndYear;
+        const rawStart = startYear || this.currentStartYear;
+        const rawEnd = endYear || this.currentEndYear;
+        const sYear = Math.min(rawStart, rawEnd);
+        const eYear = Math.max(rawStart, rawEnd);
 
         // Filter results by year range
         const filteredResults = {};
@@ -1457,7 +1469,7 @@ export class SidebarController {
             path.setAttribute("fill", "none");
             path.setAttribute("stroke", color);
             const currentYear = new Date().getUTCFullYear();
-            path.setAttribute("stroke-width", year == currentYear ? "3" : "1.5");
+            path.setAttribute("stroke-width", year == currentYear ? "1.5" : "1.2");
             path.setAttribute("opacity", year == currentYear ? "1" : "0.6");
             svg.appendChild(path);
 
@@ -1556,18 +1568,24 @@ export class SidebarController {
 
         const updateUI = () => {
             if (!this.currentStartYear || !this.currentEndYear) return;
-            const startPerc = ((this.currentStartYear - sliderMin) / totalYears) * 100;
-            const endPerc = ((this.currentEndYear - sliderMin) / totalYears) * 100;
+            const startYear = Math.min(this.currentStartYear, this.currentEndYear);
+            const endYear = Math.max(this.currentStartYear, this.currentEndYear);
 
-            thumbStart.style.left = `${startPerc}%`;
-            thumbEnd.style.left = `${endPerc}%`;
-            fill.style.left = `${startPerc}%`;
-            fill.style.width = `${endPerc - startPerc}%`;
+            const sPerc = ((this.currentStartYear - sliderMin) / totalYears) * 100;
+            const ePerc = ((this.currentEndYear - sliderMin) / totalYears) * 100;
+            
+            thumbStart.style.left = `${sPerc}%`;
+            thumbEnd.style.left = `${ePerc}%`;
 
-            labelStart.textContent = this.currentStartYear;
-            labelEnd.textContent = this.currentEndYear;
+            const fillLeft = Math.min(sPerc, ePerc);
+            const fillWidth = Math.abs(ePerc - sPerc);
+            fill.style.left = `${fillLeft}%`;
+            fill.style.width = `${fillWidth}%`;
 
-            this.renderFullSeasonalsChart(this.fullSeasonalsResults, this.currentStartYear, this.currentEndYear);
+            labelStart.textContent = startYear;
+            labelEnd.textContent = endYear;
+
+            this.renderFullSeasonalsChart(this.fullSeasonalsResults, startYear, endYear);
         };
 
         // Initial UI Sync (runs every time)
@@ -1583,14 +1601,19 @@ export class SidebarController {
             const year = Math.round(sliderMin + perc * totalYears);
 
             if (isStart) {
-                if (year <= this.currentEndYear) this.currentStartYear = year;
+                this.currentStartYear = year;
             } else {
-                if (year >= this.currentStartYear) this.currentEndYear = year;
+                this.currentEndYear = year;
             }
+
             updateUI();
         };
 
         const onMouseDown = (isStart) => {
+            // Bring active thumb to front
+            thumbStart.style.zIndex = isStart ? "10" : "5";
+            thumbEnd.style.zIndex = isStart ? "5" : "10";
+            
             const onMouseMove = (e) => handleDrag(e, isStart);
             const onMouseUp = () => {
                 document.removeEventListener('mousemove', onMouseMove);
@@ -1627,7 +1650,7 @@ export class SidebarController {
 
             // Sort years for tooltip
             Object.keys(this.fullSeasonalsResults)
-                .filter(y => y >= this.currentStartYear && y <= this.currentEndYear)
+                .filter(y => y >= Math.min(this.currentStartYear, this.currentEndYear) && y <= Math.max(this.currentStartYear, this.currentEndYear))
                 .sort((a, b) => b - a).forEach(year => {
                     const yearData = this.fullSeasonalsResults[year].data;
                     const point = yearData.find(pt => pt.day === day) ||

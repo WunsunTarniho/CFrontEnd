@@ -3110,14 +3110,6 @@
                                     <input type="number" id="setting-footprint-row-size-manual" class="settings-input" style="flex: 1;" value="100" step="1" min="1">
                                 </div>
 
-                                <div class="settings-row">
-                                    <label style="flex: none; width: 120px;">Display</label>
-                                    <select id="setting-footprint-display-style" style="flex: 1;">
-                                        <option value="profile">Profile</option>
-                                        <option value="numbers">Numbers</option>
-                                        <option value="both">Both</option>
-                                    </select>
-                                </div>
 
                                 <div class="settings-row">
                                     <label style="flex: none; width: 120px;">Type</label>
@@ -3154,7 +3146,6 @@
                                         <div id="setting-footprint-buy-bg-4"></div>
                                     </div>
                                 </div>
-
                                 <div class="settings-row" style="margin-top: 10px;">
                                     <div style="display: flex; align-items: center; gap: 8px; width: 120px; flex: none; cursor: pointer;">
                                         <input type="checkbox" id="setting-footprint-value-area" checked style="margin: 0; cursor: pointer;">
@@ -3165,6 +3156,49 @@
                                         <span style="color: #aaa;">%</span>
                                     </div>
                                 </div>
+
+                                <!-- NEW: LABELS SECTION -->
+                                <div class="settings-group-title" style="margin-top: 20px; font-size: 11px; color: #888; text-transform: uppercase;">Labels</div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer;">
+                                        <input type="checkbox" id="setting-footprint-show-poc" checked style="margin: 0; cursor: pointer;">
+                                        <label for="setting-footprint-show-poc" style="margin: 0; cursor: pointer; user-select: none;">POC</label>
+                                    </div>
+                                    <div id="setting-footprint-poc-color"></div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer;">
+                                        <input type="checkbox" id="setting-footprint-show-summary" checked style="margin: 0; cursor: pointer;">
+                                        <label for="setting-footprint-show-summary" style="margin: 0; cursor: pointer; user-select: none;">Show summary info</label>
+                                    </div>
+                                </div>
+
+                                <!-- NEW: IMBALANCE SECTION -->
+                                <div class="settings-group-title" style="margin-top: 20px; font-size: 11px; color: #888; text-transform: uppercase;">Imbalance</div>
+                                <div class="settings-row">
+                                    <label style="flex: none; width: 120px;">Imbalance</label>
+                                    <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                                        <input type="number" id="setting-footprint-imbalance-percent" class="settings-input" style="flex: 1;" value="300" min="1">
+                                        <span style="color: #aaa;">%</span>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer;">
+                                        <input type="checkbox" id="setting-footprint-show-imbalance" checked style="margin: 0; cursor: pointer;">
+                                        <label for="setting-footprint-show-imbalance" style="margin: 0; cursor: pointer; user-select: none;">Highlighting</label>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <div id="setting-footprint-imbalance-up-color"></div>
+                                        <div id="setting-footprint-imbalance-down-color"></div>
+                                    </div>
+                                </div>
+                                <div class="settings-row">
+                                    <div style="display: flex; align-items: center; gap: 12px; width: 120px; flex: none; cursor: pointer;">
+                                        <input type="checkbox" id="setting-footprint-show-stacked-imbalance" style="margin: 0; cursor: pointer;">
+                                        <label for="setting-footprint-show-stacked-imbalance" style="margin: 0; cursor: pointer; user-select: none;">Stacked levels</label>
+                                    </div>
+                                    <input type="number" id="setting-footprint-stacked-levels" class="settings-input" style="flex: 1;" value="3" min="1">
+                                </div>
                             </div>
                         </div>
 
@@ -3172,7 +3206,7 @@
                         <div class="settings-group">
                             <div class="settings-group-title">Data Modification</div>
                             <div class="settings-row">
-                                <label style="flex: none; width: 100px;">Precision</label>
+                                <label style="flex: none; width: 120px;">Precision</label>
                                 <select id="setting-precision" style="flex: 1;">
                                     <option value="default">Default</option>
                                     <option value="0">1234</option>
@@ -3183,7 +3217,7 @@
                                 </select>
                             </div>
                             <div class="settings-row">
-                                <label style="flex: none; width: 100px;">Timezone</label>
+                                <label style="flex: none; width: 120px;">Timezone</label>
                                 <select id="setting-timezone" style="flex: 1;">
                                     <option value="UTC+7">(UTC+7) Jakarta</option>
                                     <option value="UTC">UTC</option>
@@ -3191,6 +3225,13 @@
                                     <option value="UTC+8">(UTC+8) Singapore</option>
                                     <option value="UTC-5">(UTC-5) New York</option>
                                 </select>
+                            </div>
+                            <div class="settings-row">
+                                <div style="display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer;">
+                                    <input type="checkbox" id="setting-adjust-for-dividends" style="margin: 0; cursor: pointer;">
+                                    <label for="setting-adjust-for-dividends" style="margin: 0; cursor: pointer; user-select: none; white-space: nowrap;">Adjust data for dividends</label>
+                                    <span style="color: #666; font-size: 14px; cursor: help; margin-left: auto;" title="Adjust historical data for dividend distributions">ⓘ</span>
+                                </div>
                             </div>
                         </div>
 

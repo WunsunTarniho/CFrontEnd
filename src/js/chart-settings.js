@@ -64,6 +64,7 @@ export class ChartSettingsController {
                 }
 
                 if (callback) callback(val);
+                this.chart.isLayoutDirty = true;
                 this.chart.render(true);
             });
         };
@@ -87,6 +88,7 @@ export class ChartSettingsController {
                             }
                         }
                     });
+                    this.chart.isLayoutDirty = true;
                     this.chart.render(true);
                 }
             });
@@ -109,6 +111,7 @@ export class ChartSettingsController {
                 const color2 = document.getElementById('setting-bg-advanced-2');
                 if (color2) color2.style.display = bgTypeEl.value === 'gradient' ? 'block' : 'none';
                 this.chart.backgroundType = bgTypeEl.value;
+                this.chart.isLayoutDirty = true;
                 this.chart.render(true);
             });
         }
@@ -183,6 +186,7 @@ export class ChartSettingsController {
                     });
 
                     dropdown.classList.remove('show');
+                    this.chart.isLayoutDirty = true;
                     this.chart.render(true);
                 };
             });
@@ -366,10 +370,7 @@ export class ChartSettingsController {
         h('setting-footprint-row-size-manual', 'footprintRowSizeManual', false, true, () => {
              this.chart.setInitialView();
         });
-        h('setting-footprint-display-style', 'footprintDisplayStyle', false, true, () => {
-            this.chart.render();
-        });
-        h('setting-footprint-type', 'footprintType', false, true, () => {
+        h('setting-footprint-type', 'footprintType', false, false, () => {
             this.chart.render();
         });
         h('setting-footprint-apply-gradient', 'footprintApplyGradient', true, false, () => {
@@ -379,6 +380,31 @@ export class ChartSettingsController {
             this.chart.render();
         });
         h('setting-footprint-value-area-percent', 'footprintValueAreaPercent', false, true, () => {
+            this.chart.render();
+        });
+
+        // NEW: Labels & Imbalance Handlers
+        h('setting-footprint-show-poc', 'footprintShowPOC', true, false, () => {
+            this.chart.render();
+        });
+        hSmall('setting-footprint-poc-color', 'footprintPocColor');
+        
+        h('setting-footprint-show-summary', 'footprintShowSummary', true, false, () => {
+            this.chart.render();
+        });
+        h('setting-footprint-imbalance-percent', 'footprintImbalancePercent', false, true, () => {
+            this.chart.render();
+        });
+        h('setting-footprint-show-imbalance', 'footprintShowImbalance', true, false, () => {
+            this.chart.render();
+        });
+        hSmall('setting-footprint-imbalance-up-color', 'footprintImbalanceUpColor');
+        hSmall('setting-footprint-imbalance-down-color', 'footprintImbalanceDownColor');
+        
+        h('setting-footprint-show-stacked-imbalance', 'footprintShowStackedImbalance', true, false, () => {
+            this.chart.render();
+        });
+        h('setting-footprint-stacked-levels', 'footprintStackedLevels', false, true, () => {
             this.chart.render();
         });
 
@@ -674,11 +700,21 @@ export class ChartSettingsController {
         s('setting-footprint-row-size-method', 'footprintRowSizeMethod');
         s('setting-footprint-atr-length', 'footprintAtrLength');
         s('setting-footprint-row-size-manual', 'footprintRowSizeManual');
-        s('setting-footprint-display-style', 'footprintDisplayStyle');
         s('setting-footprint-type', 'footprintType');
         s('setting-footprint-apply-gradient', 'footprintApplyGradient', true);
         s('setting-footprint-value-area', 'footprintValueArea', true);
         s('setting-footprint-value-area-percent', 'footprintValueAreaPercent');
+        
+        // NEW: Sync Labels & Imbalance
+        s('setting-footprint-show-poc', 'footprintShowPOC', true);
+        sAdvanced('setting-footprint-poc-color', { hexAlpha: this.chart.footprintPocColor });
+        s('setting-footprint-show-summary', 'footprintShowSummary', true);
+        s('setting-footprint-imbalance-percent', 'footprintImbalancePercent');
+        s('setting-footprint-show-imbalance', 'footprintShowImbalance', true);
+        sAdvanced('setting-footprint-imbalance-up-color', { hexAlpha: this.chart.footprintImbalanceUpColor });
+        sAdvanced('setting-footprint-imbalance-down-color', { hexAlpha: this.chart.footprintImbalanceDownColor });
+        s('setting-footprint-show-stacked-imbalance', 'footprintShowStackedImbalance', true);
+        s('setting-footprint-stacked-levels', 'footprintStackedLevels');
 
         const fpMethod = this.chart.footprintRowSizeMethod;
         const fpAtrRow = document.getElementById('setting-footprint-atr-row');

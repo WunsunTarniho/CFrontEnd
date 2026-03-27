@@ -295,6 +295,7 @@ export async function saveCurrentLayout() {
             lastSymbol: window.chart.symbol,
             lastTickerId: window.chart.tickerId
         });
+        window.chart.isLayoutDirty = false;
         console.log(`Layout saved successfully (Timeframe: ${currentTf})`);
     } catch (error) {
         console.error('Failed to save layout:', error);
