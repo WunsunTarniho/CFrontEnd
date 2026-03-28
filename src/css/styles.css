@@ -251,6 +251,39 @@ input[type="number"] {
     color: #888;
 }
 
+/* Legend OHLCV Info */
+.legend-values-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 8px;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.legend-label {
+    color: #8D9BBA;
+}
+
+.legend-value {
+    color: #f0f3fa;
+    font-weight: 500;
+}
+
+.legend-change {
+    margin-left: 4px;
+    font-size: 12px;
+    font-weight: 400;
+}
+
 /* Legend Actions (Shown on Hover) */
 .legend-actions {
     display: flex;
@@ -1339,7 +1372,7 @@ input[type="number"] {
 
 .toolbar-action-btn {
     background: #2a2e39;
-    border: none;
+    border: 1px solid transparent;
     color: #f0f3fa;
     padding: 6px 12px;
     border-radius: 4px;
@@ -1349,6 +1382,17 @@ input[type="number"] {
     display: flex;
     align-items: center;
     gap: 6px;
+    transition: all 0.2s;
+}
+
+.toolbar-action-btn:hover {
+    background: #363c4e;
+}
+
+.toolbar-action-btn.active {
+    background: rgba(41, 98, 255, 0.2);
+    color: #2962ff;
+    border: 1px solid #2962ff;
 }
 
 .toolbar-dropdown {
@@ -1474,6 +1518,82 @@ input[type="number"] {
     color: #787b86;
 }
 
+/* Seasonal Table Styles */
+.seasonal-table-wrapper {
+    background: #0b0e11;
+}
+
+.seasonal-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #d1d4dc;
+    font-size: 11px;
+}
+
+.seasonal-table th, .seasonal-table td {
+    border: 0.5px solid #2a2e39;
+    padding: 0 4px; /* Reduced vertical padding */
+    text-align: center;
+    width: 6.5%; 
+    height: 36px; /* Fixed row height */
+    vertical-align: middle;
+}
+
+.seasonal-table th {
+    background: #131722;
+    font-weight: 600;
+    color: #787b86;
+    height: 40px;
+}
+
+.seasonal-table td:first-child, .seasonal-table th:first-child {
+    width: 40px;
+    text-align: left;
+    background: #131722;
+    font-weight: 600;
+}
+
+.seasonal-table .month-cell.cell-up {
+    background: rgba(8, 153, 129, 0.45);
+    color: #ffffff;
+}
+
+.seasonal-table .month-cell.cell-down {
+    background: rgba(242, 54, 69, 0.45);
+    color: #ffffff;
+}
+
+.seasonal-table .month-cell.cell-neutral {
+    background: transparent;
+    color: #787b86;
+}
+
+.seasonal-table .footer-row {
+    background: #131722;
+    font-weight: 700;
+}
+
+.seasonal-table .footer-row td {
+    border-top: 1.5px solid #363c4e;
+}
+
+.seasonal-table .rise-fall-text {
+    font-size: 9px;
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    font-weight: 700;
+}
+
+.seasonal-table .rise-text { color: #089981; }
+.seasonal-table .fall-text { color: #f23645; }
+
+.seasonal-table .year-column {
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.05);
+}
+
 /* Labels Column on the Right */
 .seasonals-labels-column {
     width: 80px;
@@ -1490,7 +1610,7 @@ input[type="number"] {
     align-items: center;
     font-size: 11px;
     font-weight: 700;
-    color: white !important;
+    color: #ffffff;
     border-radius: 2px;
     overflow: hidden;
     white-space: nowrap;
@@ -1505,6 +1625,22 @@ input[type="number"] {
 .year-pct {
     padding: 2px 6px;
     border-left: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.average-tag {
+    color: #000000 !important;
+    z-index: 10;
+    border: 1.5px solid #ffffff;
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2), 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.average-tag .year-num {
+    background: #ffffff;
+    color: #000000;
+}
+
+.average-tag .year-pct {
+    border-left: 1px solid #000000;
 }
 
 #bottom-bar {
@@ -3652,4 +3788,60 @@ canvas {
     border: 1px solid #363a45;
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
     border-radius: 6px;
+}
+
+/* Seasonal View Export Dropdown */
+.export-dropdown-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.export-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    background: #1e222d;
+    border: 1px solid #363a45;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    min-width: 180px;
+    z-index: 10020;
+    padding: 6px 0;
+    animation: fadeIn 0.2s ease;
+}
+
+.export-menu.show {
+    display: block;
+}
+
+.export-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    color: #d1d4dc;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.export-item:hover {
+    background: #2a2e39;
+    color: #ffffff;
+}
+
+.export-item svg {
+    color: #787b86;
+}
+
+.export-item:hover svg {
+    color: #2962ff;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
 }

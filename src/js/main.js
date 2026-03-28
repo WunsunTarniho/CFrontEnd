@@ -295,7 +295,12 @@ function setupChartTypeSelector() {
             chartTypeDropdown.classList.remove('show');
             chartTypeBtn.classList.remove('active');
 
-            if (window.chart) window.chart.setMode(mode);
+            if (window.chart) {
+                window.chart.setMode(mode);
+                if (typeof window.saveCurrentLayout === 'function') {
+                    window.saveCurrentLayout();
+                }
+            }
             if (window.chartSettingsController) window.chartSettingsController.showSymbolSection(mode);
         });
     });

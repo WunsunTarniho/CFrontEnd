@@ -75,6 +75,14 @@ export class TableViewController {
         return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    formatVolume(num) {
+        if (num === null || num === undefined || isNaN(num)) return '---';
+        if (num >= 1000000000) return (num / 1000000000).toFixed(2) + 'B';
+        if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+        if (num >= 1000) return (num / 1000).toFixed(2) + 'K';
+        return num.toFixed(2);
+    }
+
     show() {
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) return;
 
@@ -164,6 +172,7 @@ export class TableViewController {
                 <td style="padding: 12px 24px;">${this.formatNumber(candle.high)}</td>
                 <td style="padding: 12px 24px;">${this.formatNumber(candle.low)}</td>
                 <td style="padding: 12px 24px;">${this.formatNumber(candle.close)}</td>
+                <td style="padding: 12px 24px;">${this.formatVolume(candle.volume)}</td>
                 <td style="padding: 12px 24px; ${colorClass}">${formattedChange}</td>
             `;
             this.tbody.appendChild(tr);
@@ -200,8 +209,9 @@ export class TableViewController {
             firstRow.cells[2].textContent = this.formatNumber(newest.high);
             firstRow.cells[3].textContent = this.formatNumber(newest.low);
             firstRow.cells[4].textContent = this.formatNumber(newest.close);
-            firstRow.cells[5].textContent = formattedChange;
-            firstRow.cells[5].style = `padding: 12px 24px; ${colorClass}`;
+            firstRow.cells[5].textContent = this.formatVolume(newest.volume);
+            firstRow.cells[6].textContent = formattedChange;
+            firstRow.cells[6].style = `padding: 12px 24px; ${colorClass}`;
         } else {
             // It's a completely new candle, prepend a new row
             const tr = document.createElement('tr');
@@ -216,6 +226,7 @@ export class TableViewController {
                 <td style="padding: 12px 24px;">${this.formatNumber(newest.high)}</td>
                 <td style="padding: 12px 24px;">${this.formatNumber(newest.low)}</td>
                 <td style="padding: 12px 24px;">${this.formatNumber(newest.close)}</td>
+                <td style="padding: 12px 24px;">${this.formatVolume(newest.volume)}</td>
                 <td style="padding: 12px 24px; ${colorClass}">${formattedChange}</td>
             `;
             this.tbody.insertBefore(tr, firstRow);

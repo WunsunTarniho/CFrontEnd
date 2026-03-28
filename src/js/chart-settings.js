@@ -7,6 +7,7 @@ export class ChartSettingsController {
         this.dialog = document.getElementById('chart-settings-dialog');
         this.activeTab = 'symbol';
         this.advancedComponents = {};
+        this.snapshot = null;
         this.init();
     }
 
@@ -15,19 +16,19 @@ export class ChartSettingsController {
 
         // Close handlers
         const closeBtn = this.dialog.querySelector('.chart-settings-close');
-        if (closeBtn) closeBtn.onclick = () => this.hide();
+        if (closeBtn) closeBtn.onclick = () => this.hide(true);
 
         const cancelBtn = document.getElementById('chart-settings-cancel');
-        if (cancelBtn) cancelBtn.onclick = () => this.hide();
+        if (cancelBtn) cancelBtn.onclick = () => this.hide(true);
 
         const okBtn = document.getElementById('chart-settings-ok');
         if (okBtn) okBtn.onclick = () => {
             this.applySettings();
-            this.hide();
+            this.hide(false);
         };
 
         this.backdrop.onclick = (e) => {
-            if (e.target === this.backdrop) this.hide();
+            if (e.target === this.backdrop) this.hide(true);
         };
 
         // Tab switching
@@ -370,7 +371,14 @@ export class ChartSettingsController {
         h('setting-footprint-row-size-manual', 'footprintRowSizeManual', false, true, () => {
              this.chart.setInitialView();
         });
-        h('setting-footprint-type', 'footprintType', false, false, () => {
+        h('setting-footprint-type', 'footprintType', false, false, (val) => {
+            const buySellColors = document.getElementById('setting-footprint-buy-sell-colors');
+            const totalColors = document.getElementById('setting-footprint-total-colors');
+            if (buySellColors && totalColors) {
+                const isTotal = val === 'total';
+                buySellColors.style.display = isTotal ? 'none' : 'block';
+                totalColors.style.display = isTotal ? 'block' : 'none';
+            }
             this.chart.render();
         });
         h('setting-footprint-apply-gradient', 'footprintApplyGradient', true, false, () => {
@@ -418,6 +426,10 @@ export class ChartSettingsController {
                 this.chart.footprintBuyBgColors[i-1] = color;
                 this.chart.render();
             });
+            hSmall(`setting-footprint-total-bg-${i}`, null, (color) => {
+                this.chart.footprintTotalBgColors[i-1] = color;
+                this.chart.render();
+            });
         }
         h('setting-renko-atr-length', 'renkoAtRLength', false, true, () => {
             this.chart.setInitialView();
@@ -439,6 +451,19 @@ export class ChartSettingsController {
         // Data Modification
         h('setting-precision', 'precision');
         h('setting-timezone', 'timezone');
+
+        // Status Line
+        h('setting-status-logo', 'showLegendLogo', true);
+        h('setting-status-title', 'showLegendTitle', true);
+        h('setting-status-title-display', 'legendTitleDisplay');
+        h('setting-status-open-market', 'showLegendOpenMarketStatus', true);
+        h('setting-status-values', 'showLegendValues', true);
+        h('setting-status-bar-change', 'showLegendBarChange', true);
+        h('setting-status-volume', 'showLegendVolume', true);
+        h('setting-status-last-day-change', 'showLegendLastDayChange', true);
+        h('setting-status-ind-titles', 'showLegendIndTitles', true);
+        h('setting-status-ind-inputs', 'showLegendIndInputs', true);
+        h('setting-status-ind-values', 'showLegendIndValues', true);
     }
 
     switchTab(tabId) {
@@ -461,6 +486,8 @@ export class ChartSettingsController {
 
     show() {
         if (this.backdrop) {
+            this.chart.isSettingsOpen = true;
+            this.snapshot = this.chart.getChartState();
             this.backdrop.style.display = 'flex';
             this.showSymbolSection(this.chart.chartMode);
             this.syncInputsWithChart();
@@ -508,9 +535,16 @@ export class ChartSettingsController {
         if (target) target.style.display = 'block';
     }
 
-    hide() {
+    hide(revert = false) {
         if (this.backdrop) {
             this.backdrop.style.display = 'none';
+            this.chart.isSettingsOpen = false;
+            
+            if (revert && this.snapshot) {
+                this.chart.applyChartState(this.snapshot);
+                this.chart.render(true);
+            }
+            this.snapshot = null;
         }
     }
 
@@ -721,10 +755,19 @@ export class ChartSettingsController {
         const fpManualRow = document.getElementById('setting-footprint-manual-row');
         if (fpAtrRow) fpAtrRow.style.display = fpMethod === 'atr' ? 'flex' : 'none';
         if (fpManualRow) fpManualRow.style.display = fpMethod === 'manual' ? 'flex' : 'none';
+        
+        const buySellColors = document.getElementById('setting-footprint-buy-sell-colors');
+        const totalColors = document.getElementById('setting-footprint-total-colors');
+        if (buySellColors && totalColors) {
+            const isTotal = this.chart.footprintType === 'total';
+            buySellColors.style.display = isTotal ? 'none' : 'block';
+            totalColors.style.display = isTotal ? 'block' : 'none';
+        }
 
         for (let i = 1; i <= 4; i++) {
             sAdvanced(`setting-footprint-sell-bg-${i}`, { hexAlpha: this.chart.footprintSellBgColors[i-1] || '#000' });
             sAdvanced(`setting-footprint-buy-bg-${i}`, { hexAlpha: this.chart.footprintBuyBgColors[i-1] || '#000' });
+            sAdvanced(`setting-footprint-total-bg-${i}`, { hexAlpha: this.chart.footprintTotalBgColors[i-1] || '#000' });
         }
 
         const renkoMethod = this.chart.renkoBoxSizeMethod;
@@ -776,6 +819,19 @@ export class ChartSettingsController {
         // Data Modification
         s('setting-precision', 'precision');
         s('setting-timezone', 'timezone');
+
+        // Status Line
+        s('setting-status-logo', 'showLegendLogo', true);
+        s('setting-status-title', 'showLegendTitle', true);
+        s('setting-status-title-display', 'legendTitleDisplay');
+        s('setting-status-open-market', 'showLegendOpenMarketStatus', true);
+        s('setting-status-values', 'showLegendValues', true);
+        s('setting-status-bar-change', 'showLegendBarChange', true);
+        s('setting-status-volume', 'showLegendVolume', true);
+        s('setting-status-last-day-change', 'showLegendLastDayChange', true);
+        s('setting-status-ind-titles', 'showLegendIndTitles', true);
+        s('setting-status-ind-inputs', 'showLegendIndInputs', true);
+        s('setting-status-ind-values', 'showLegendIndValues', true);
     }
 
     updateLineUI(lineType) {
