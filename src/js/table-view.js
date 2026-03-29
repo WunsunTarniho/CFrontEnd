@@ -1,9 +1,12 @@
+import { getTickerLogo } from "./utils.js";
+
 export class TableViewController {
     constructor(chart) {
         this.chart = chart;
         this.container = document.getElementById('table-view-container');
         this.tbody = document.getElementById('table-view-body');
         this.closeBtn = document.getElementById('table-view-close');
+        this.logoEl = document.getElementById('table-view-logo');
         this.titleEl = document.getElementById('table-view-title');
         this.subtitleEl = document.getElementById('table-view-subtitle');
         this.dateHeaderEl = document.getElementById('table-view-date-header');
@@ -99,9 +102,21 @@ export class TableViewController {
 
         // Update headers based on chart symbol
         const symbol = this.chart.symbol || 'Unknown';
+        const market = (this.chart.market || 'crypto').toLowerCase();
+        const exchange = this.chart.exchange || 'Unknown';
+        const fullName = this.chart.fullName || symbol;
 
-        if (this.titleEl) this.titleEl.textContent = symbol;
-        if (this.subtitleEl) this.subtitleEl.textContent = symbol;
+        if (this.titleEl) this.titleEl.textContent = fullName;
+        if (this.subtitleEl) this.subtitleEl.textContent = `${symbol} - ${exchange}`;
+        
+        if (this.logoEl) {
+            const logoUrl = getTickerLogo(symbol, this.chart.currency, market);
+                
+            this.logoEl.innerHTML = `
+                <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
+                <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; color: #131722;">${symbol.charAt(0)}</div>
+            `;
+        }
 
         this.renderData(this.chart.data);
     }

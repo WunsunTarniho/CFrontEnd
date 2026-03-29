@@ -7,7 +7,9 @@ import {
     saveLayout,
     updateLayout,
     deleteLayout,
-    touchLayout
+    touchLayout,
+    saveTickerPreference,
+    getAllTickerPreferences
 } from './service.js';
 import { DEFAULT_WATCHLIST_SYMBOLS } from './constants.js';
 
@@ -51,17 +53,18 @@ export async function fetchStockData(stock, timeframe, endDateTs = null) {
 
         const ticker = stock.ticker;
         const apiBase = 'http://localhost:5000';
-        let url = `${apiBase}/api/market/history?symbol=${ticker}&timeframe=${timeframe}&market=${stock.market}`;
+        let url = `${apiBase}/api/market/history?symbol=${ticker}&timeframe=${timeframe}&market=${stock.market}&exchange=${stock.exchange || ''}&limit=1000`;
         if (endDateTs) url += `&endDateTs=${endDateTs}`;
 
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Backend returned ${response.status}`);
 
         const data = await response.json();
-        return data || [];
+        // data is { candles: [], meta: { marketStatus: '...' } }
+        return data || { candles: [], meta: { marketStatus: 'REGULAR' } };
     } catch (error) {
         console.error('Error fetching data from backend:', error);
-        return [];
+        return { candles: [], meta: { marketStatus: 'REGULAR' } };
     } finally {
         const loading = document.getElementById('loading-indicator');
         if (loading) loading.style.display = 'none';
@@ -78,16 +81,37 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
     let activeLayout = layoutId ? layouts.find(l => l._id === layoutId) : layouts[0];
 
     // --- 2. Resolve Stock ID ---
+    const searchInput = document.getElementById('stock-search');
     let stock_id;
+    let selectedExchange = '';
+
     if (forcedStock) {
-        stock_id = forcedStock._id;
-    } else if (layoutId && activeLayout && activeLayout.lastTickerId) {
-        // If switching layout explicitly, prioritize its last ticker
+        stock_id = forcedStock._id || forcedStock.ticker;
+        selectedExchange = forcedStock.primary_exchange || '';
+    } else if (searchInput && searchInput.dataset.stockId) {
+        // High priority: what the user just clicked in search modal
+        stock_id = searchInput.dataset.stockId;
+        selectedExchange = searchInput.dataset.exchange || '';
+        // Clear it so it doesn't "stick" on subsequent timeframe/layout calls
+        delete searchInput.dataset.stockId;
+        delete searchInput.dataset.exchange;
+    } else if (activeLayout && activeLayout.lastTickerId) {
+        // Use last ticker from layout (covers initial load and layout switch)
         stock_id = activeLayout.lastTickerId.ticker || activeLayout.lastTickerId;
     } else {
-        const searchInput = document.getElementById('stock-search');
-        stock_id = (searchInput && searchInput.dataset.stockId) || window.chart.currentStockId || 'BTCUSDT';
+        stock_id = window.chart.currentStockId || 'BTCUSDT';
     }
+
+    // Resolve from Local Cache/DB Sync (last used for this ticker)
+    if (!selectedExchange || selectedExchange === 'undefined') {
+        const savedExch = localStorage.getItem(`last_exchange_${stock_id}`);
+        if (savedExch) {
+            selectedExchange = savedExch;
+        } else {
+            selectedExchange = 'BINANCE';
+        }
+    }
+    console.log(`[loadStockData] Resolved Exchange for ${stock_id}: ${selectedExchange}`);
 
     // Final safety check for stock_id
     if (!stock_id || stock_id === 'undefined') {
@@ -113,7 +137,7 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
     if (!stock) {
         console.warn(`Stock ID ${stock_id} not found, falling back to BTCUSDT`);
         const fallbackRes = await findStockByTicker('BTCUSDT');
-        stock = fallbackRes?.data || { ticker: 'BTCUSDT', _id: BTC_ID, name: 'Bitcoin' };
+        stock = fallbackRes?.data || { ticker: 'BTCUSDT', _id: BTC_ID, name: 'Bitcoin', primary_exchange: 'BINANCE' };
     }
 
     // --- 3. Safety Check if Layout doesn't exist ---
@@ -145,7 +169,14 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         if (window.setTfActive) window.setTfActive(timeframe);
     }
 
-    const data = await fetchStockData(stock, timeframe);
+    if (selectedExchange) stock.exchange = selectedExchange;
+
+    if (selectedExchange) stock.exchange = selectedExchange;
+
+    const responseData = await fetchStockData(stock, timeframe);
+
+    const data = responseData.candles || [];
+    const meta = responseData.meta || { marketStatus: 'REGULAR' };
 
     if (data.length > 0) {
         candleCache[stock.ticker + '_' + timeframe] = data;
@@ -154,8 +185,16 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         window.chart.symbol = stock.ticker;
         window.chart.instrument = stock.name;
         window.chart.currency = stock.currency_symbol ?? (stock.currency_name ? stock.currency_name.toUpperCase() : '');
-        window.chart.exchange = stock.primary_exchange;
+        window.chart.exchange = selectedExchange || stock.exchange || stock.primary_exchange;
         window.chart.market = stock.market;
+
+        // Persist Choice (Local + DB)
+        if (window.chart.exchange) {
+            localStorage.setItem(`last_exchange_${stock.ticker}`, window.chart.exchange);
+            if (stock._id) localStorage.setItem(`last_exchange_${stock._id}`, window.chart.exchange);
+            saveTickerPreference(stock.ticker, window.chart.exchange).catch(e => console.error("DB save error:", e));
+        }
+        window.chart.marketStatus = meta.marketStatus;
 
         window.chart.rawData = data;
 
@@ -206,19 +245,21 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         // Apply Indicators from Layout
         if (activeLayout.indicators && activeLayout.indicators.length > 0) {
             if (window.chart && activeLayout.indicators) {
+                // Batch add indicators without triggering individual renders
                 activeLayout.indicators.forEach(ind => {
-                    const doc = ind.indicatorId; // This is populated
+                    const doc = ind.indicatorId;
                     if (doc && ind.isVisible !== false) {
                         const script = doc.script || '';
                         window.chart.addIndicator(doc.name, script, {
                             ...ind.settings,
                             indicatorId: doc._id,
                             isVisible: ind.isVisible
-                        });
+                        }, true); // Pass true to skip internal render
                     }
                 });
             }
         }
+
 
         // [CHART STATE RESTORATION] - Restore zoom, scroll, etc.
         if (window.chart && activeLayout.chartState) {
@@ -232,10 +273,6 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
                 window.setChartModeActive(activeLayout.chartState.chartMode);
             }
         }
-        if (window.chart) {
-            window.chart.isLoading = false;
-        }
-
         if (window.setSearchTicker && window.chart.symbol) {
             window.setSearchTicker(window.chart.symbol);
         }
@@ -304,19 +341,17 @@ export async function saveCurrentLayout() {
 
 export async function handleTimeframeChange(timeframe) {
     if (!window.chart) return;
-    window.chart.isLoading = true;
-    if (window.chart) {
-        window.setTfActive(timeframe);
-        window.setChartModeActive(window.chart.chartMode || 'candle');
-    }
+    window.setTfActive(timeframe);
+    window.setChartModeActive(window.chart.chartMode || 'candle');
 
     const searchInput = document.getElementById('stock-search');
     const stockId = window.chart.currentStockId || (searchInput && searchInput.dataset.stockId);
     const ticker = window.chart.symbol;
 
+    window.chart.marketStatus = 'REGULAR';
+
     if (!stockId || !ticker) {
         window.chart.setTimeframe(timeframe);
-        window.chart.isLoading = false;
         return;
     }
 
@@ -347,12 +382,15 @@ export async function handleTimeframeChange(timeframe) {
         if (window.dispatchEvent) {
             window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
         }
-        window.chart.isLoading = false;
         return;
     }
 
-    const data = await fetchStockData({ ticker, market: window.chart.market }, timeframe);
+    const responseData = await fetchStockData({ ticker, market: window.chart.market }, timeframe);
+    const data = responseData.candles || [];
+    const meta = responseData.meta || { marketStatus: 'REGULAR' };
+
     if (data && data.length > 0) {
+        window.chart.marketStatus = meta.marketStatus;
         candleCache[cacheKey] = data;
         window.chart.rawData = data;
         window.chart.setTimeframe(timeframe);
@@ -372,7 +410,6 @@ export async function handleTimeframeChange(timeframe) {
         if (window.dispatchEvent) {
             window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
         }
-        window.chart.isLoading = false;
     }
 }
 
@@ -402,5 +439,20 @@ export function updateTimeframeOptions(market) {
             secondsLabel.style.display = 'block';
             secondsGroup.style.display = 'grid';
         }
+    }
+}
+
+export async function syncTickerPreferences() {
+    try {
+        const res = await getAllTickerPreferences();
+        // Backend returns a direct array of preferences
+        if (Array.isArray(res)) {
+            res.forEach(pref => {
+                localStorage.setItem(`last_exchange_${pref.ticker}`, pref.lastExchange);
+            });
+            console.log("Ticker preferences synced from DB");
+        }
+    } catch (e) {
+        console.error("Sync error:", e);
     }
 }

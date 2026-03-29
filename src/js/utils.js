@@ -126,7 +126,7 @@ export function setChartModeActive(mode) {
 
     const currentIcon = document.getElementById('current-chart-icon');
     if (currentIcon) currentIcon.replaceWith(svgContent);
-    
+
     const currentChartLabel = document.getElementById('current-chart-label');
     if (currentChartLabel) currentChartLabel.textContent = labelText;
 
@@ -137,4 +137,33 @@ export function setChartModeActive(mode) {
 export function setSearchTicker(ticker) {
     const el = document.getElementById('search-label');
     if (el) el.textContent = ticker;
+
+}
+
+export function extractSymbol(ticker) {
+    let s = (ticker || "").toUpperCase();
+    if (s.includes(':')) s = s.split(':').pop();
+    if (s.includes('.')) s = s.split('.')[0];
+    return s;
+}
+
+export function getTickerLogo(ticker, currency = '', market = 'crypto') {
+    let fullTicker = (ticker || "").toUpperCase();
+    let symbol = fullTicker;
+
+    if (market == 'crypto') {
+        symbol = symbol.replace(currency.toUpperCase(), '')
+    }
+
+    if (market === 'crypto' || !market) {
+        // Very reliable crypto icon source
+        return `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${symbol.toLowerCase()}.png`;
+    } else {
+        if (currency.toLowerCase() == 'usd') {
+            symbol = symbol.split('.')[0]
+        }
+
+        // Ticker Logos repo is a high-quality community maintained source
+        return `https://companiesmarketcap.com/img/company-logos/64/${symbol.toUpperCase()}.png`;
+    }
 }

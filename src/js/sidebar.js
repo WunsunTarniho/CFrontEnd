@@ -2,11 +2,12 @@ import * as Icons from './icons.js';
 import { getLayouts, saveLayout, updateLayout, deleteLayout, touchLayout } from './service.js';
 import { candleCache, fetchStockData, loadStockData, saveCurrentLayout } from './data-service.js';
 import { DEFAULT_WATCHLIST_SYMBOLS } from './constants.js';
+import { getTickerLogo, extractSymbol } from './utils.js';
 
 export class SidebarController {
     constructor() {
         this.watchlistData = DEFAULT_WATCHLIST_SYMBOLS.map(s => ({
-            symbol: s.ticker, market: s.market, price: '...', change: '...', up: true
+            symbol: s.ticker, market: s.market, price: '...', change: '...', up: true, currency: s.currency,
         }));
 
         this.watchlistContainer = document.getElementById('watchlist-items');
@@ -66,7 +67,9 @@ export class SidebarController {
                 this.selectSymbol({
                     symbol: chart.symbol,
                     name: chart.instrument,
-                    market: chart.market
+                    market: chart.market,
+                    exchange: chart.exchange,
+                    currency: chart.currency
                 }, null, true);
             }
         });
@@ -185,8 +188,17 @@ export class SidebarController {
                         if (sData.length > 0) {
                             const lastP = sData[sData.length - 1];
                             const newPoint = { day: doy, percentage: pct, regular: points };
+                            
                             if (doy > lastP.day) {
-                                sData.push(newPoint);
+                                // Fill any gaps (e.g. over weekends) to ensure "one day one point"
+                                for (let d = lastP.day + 1; d <= doy; d++) {
+                                    if (d === doy) {
+                                        sData.push(newPoint);
+                                    } else {
+                                        // Carry over last point
+                                        sData.push({ ...lastP, day: d });
+                                    }
+                                }
                             } else {
                                 sData[sData.length - 1] = newPoint;
                             }
@@ -206,10 +218,10 @@ export class SidebarController {
                         const fData = this.fullSeasonalsResults[currentYear].data;
                         if (fData.length > 0) {
                             const lastP = fData[fData.length - 1];
-                            const newPoint = { 
-                                day: doy, 
-                                percentage: pct, 
-                                regular: data.price 
+                            const newPoint = {
+                                day: doy,
+                                percentage: pct,
+                                regular: data.price
                             };
                             if (doy > lastP.day) {
                                 fData.push(newPoint);
@@ -223,13 +235,13 @@ export class SidebarController {
                 }
 
                 if (updated) {
-                this.lastSeasonalSyncTime = now;
-                // If table is visible, refresh it too
-                const tableWrapper = document.getElementById('seasonals-full-table');
-                if (tableWrapper && tableWrapper.style.display === 'block') {
-                    this.renderSeasonalTable(this.fullSeasonalsResults);
+                    this.lastSeasonalSyncTime = now;
+                    // If table is visible, refresh it too
+                    const tableWrapper = document.getElementById('seasonals-full-table');
+                    if (tableWrapper && tableWrapper.style.display === 'block') {
+                        this.renderSeasonalTable(this.fullSeasonalsResults);
+                    }
                 }
-            }
             }
 
             // 3. Update Real-time Performance Metrics (Throttled 1s)
@@ -252,9 +264,11 @@ export class SidebarController {
 
         // Also update watchlist items if present
         const watchlistItems = document.querySelectorAll('.watchlist-item');
+        const normalizedIncoming = incomingSymbol.replace(/[/_]/g, '').toUpperCase();
+
         watchlistItems.forEach(item => {
-            const itemSymbol = item.querySelector('.symbol-name').textContent.replace('/', '');
-            if (itemSymbol === incomingSymbol) {
+            const itemSymbol = (item.dataset.symbol || '').replace(/[/_]/g, '').toUpperCase();
+            if (itemSymbol === normalizedIncoming) {
                 const priceEl = item.querySelector('.symbol-price');
                 const changeEl = item.querySelector('.symbol-change');
                 if (priceEl) {
@@ -290,7 +304,8 @@ export class SidebarController {
                 const ticker = item.symbol.toUpperCase();
                 const marketParam = item.market === 'stock' ? 'stocks' : item.market;
                 const res = await fetch(`${apiBase}/api/market/history?symbol=${ticker}&timeframe=1d&market=${marketParam}`);
-                const candles = await res.json();
+                const responseData = await res.json();
+                const candles = responseData.candles || [];
 
                 if (Array.isArray(candles) && candles.length > 0) {
                     const last = candles[candles.length - 1];
@@ -324,11 +339,11 @@ export class SidebarController {
     }
 
     updateWatchlistItemUI(symbol, price, changePercent) {
-        const incomingSymbol = symbol.replace('/', '');
+        const normalizedIncoming = symbol.replace(/[/_]/g, '').toUpperCase();
         const watchlistItems = document.querySelectorAll('.watchlist-item');
         watchlistItems.forEach(item => {
-            const itemSymbol = item.querySelector('.symbol-name').textContent.replace('/', '');
-            if (itemSymbol === incomingSymbol) {
+            const itemSymbol = (item.dataset.symbol || '').replace(/[/_]/g, '').toUpperCase();
+            if (itemSymbol === normalizedIncoming) {
                 const priceEl = item.querySelector('.symbol-price');
                 const changeEl = item.querySelector('.symbol-change');
                 if (priceEl) {
@@ -780,10 +795,22 @@ export class SidebarController {
         this.watchlistData.forEach(item => {
             const row = document.createElement('div');
             row.className = 'watchlist-item';
+            row.dataset.symbol = item.symbol;
+            const displayTicker = extractSymbol(item.symbol);
+
+            const logoUrl = getTickerLogo(item.symbol, item.currency, item.market);
             row.innerHTML = `
-                <div class="symbol-name">${item.symbol}</div>
-                <div class="symbol-price">${item.price}</div>
-                <div class="symbol-change ${item.up ? 'change-up' : 'change-down'}">${item.change}</div>
+                <div class="watchlist-item-left">
+                    <div class="watchlist-item-icon">
+                        <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
+                        <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center;">${displayTicker[0]}</div>
+                    </div>
+                    <div class="symbol-name">${displayTicker}</div>
+                </div>
+                <div class="watchlist-item-right">
+                    <div class="symbol-price">${item.price}</div>
+                    <div class="symbol-change ${item.up ? 'change-up' : 'change-down'}">${item.change}</div>
+                </div>
             `;
             row.addEventListener('click', (e) => this.selectSymbol(item, e));
             this.watchlistContainer.appendChild(row);
@@ -803,7 +830,39 @@ export class SidebarController {
 
         if (detailSymbol) detailSymbol.textContent = item.symbol;
         if (detailName) detailName.textContent = name;
-        if (detailLogo) detailLogo.textContent = item.symbol.charAt(0);
+        
+        // Reset price and change labels to avoid showing previous symbol's data
+        const dPrice = document.getElementById('detail-price');
+        const dChgAbs = document.getElementById('detail-change-abs');
+        const dChgPct = document.getElementById('detail-change-pct');
+        const dVol = document.getElementById('detail-volume');
+        const dStatus = document.getElementById('detail-market-status');
+
+        if (dPrice) dPrice.textContent = item.price || '...';
+        if (dChgAbs) dChgAbs.textContent = item.changeAbs || (item.change ? item.change.split(' ')[0] : '...');
+        if (dChgPct) dChgPct.textContent = item.changePercent || (item.change ? item.change.split(' ')[1] : '...');
+        if (dVol) dVol.textContent = '...';
+        if (dStatus) dStatus.textContent = 'loading...';
+        
+        if (detailLogo) {
+            const logoUrl = getTickerLogo(item.symbol, item.currency, item.market);
+            const logoSymbol = extractSymbol(item.symbol);
+            detailLogo.innerHTML = `
+                <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
+                <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center;">${logoSymbol[0]}</div>
+            `;
+            detailLogo.style.background = 'none'; // Clear static background
+        }
+
+        // Update Exchange and Currency
+        const detailExch = document.getElementById('detail-exchange');
+        if (detailExch) {
+            detailExch.textContent = item.exchange || window.chart?.exchange || 'BINANCE';
+        }
+        const currencyLabels = document.querySelectorAll('.currency-label');
+        currencyLabels.forEach(el => {
+            el.textContent = item.currency || window.chart?.currency || 'USDT';
+        });
 
         // Update secondary data
         // Reset seasonal base prices to avoid jumps while loading
@@ -831,9 +890,12 @@ export class SidebarController {
         const perfs = ['1w', '1m', '3m', '6m', 'ytd', '1y'];
         perfs.forEach(p => {
             const el = document.getElementById(`perf-${p}`);
-            if (el) el.textContent = '...';
+            if (el) {
+                el.textContent = '...';
+                el.style.opacity = '0.5';
+            }
             const box = document.getElementById(`perf-box-${p}`);
-            if (box) box.className = 'perf-box';
+            if (box) box.className = 'perf-box loading';
         });
 
         try {
@@ -843,14 +905,72 @@ export class SidebarController {
 
             // Fetch daily history for performance and volume via backend
             const historyRes = await fetch(`${apiBase}/api/market/history?symbol=${ticker}&timeframe=1d&market=${marketParam}`);
-            const candles = await historyRes.json();
+            const responseData = await historyRes.json();
+            const candles = responseData.candles || [];
 
             if (!Array.isArray(candles) || candles.length === 0) return;
 
-            const currentPrice = candles[candles.length - 1].close;
-            // Use previous day's close as the session baseline (industry standard for % change)
+            const lastCandle = candles[candles.length - 1];
+            const currentPrice = lastCandle.close;
             const prevCandle = candles.length >= 2 ? candles[candles.length - 2] : candles[0];
             this.sessionOpenPrice = prevCandle.close;
+
+            // Update Detail Panel with fixed data from history (important for CLOSED markets)
+            const dPrice = document.getElementById('detail-price');
+            const dChgAbs = document.getElementById('detail-change-abs');
+            const dChgPct = document.getElementById('detail-change-pct');
+            const dVol = document.getElementById('detail-volume');
+            const dStatus = document.getElementById('detail-market-status');
+
+            if (dPrice) dPrice.textContent = currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (dVol) dVol.textContent = this.formatNumber(lastCandle.volume);
+            
+            const diff = currentPrice - this.sessionOpenPrice;
+            const diffPct = (diff / this.sessionOpenPrice) * 100;
+            const colorClass = diff >= 0 ? 'up' : 'down';
+
+            if (dChgAbs) {
+                const sign = diff >= 0 ? '+' : '';
+                dChgAbs.textContent = `${sign}${diff.toFixed(2)}`;
+                dChgAbs.className = `change-container ${colorClass}`;
+                dChgAbs.style.color = diff >= 0 ? '#22ab94' : '#f23645';
+            }
+            if (dChgPct) {
+                const sign = diff >= 0 ? '+' : '';
+                dChgPct.textContent = `${sign}${diffPct.toFixed(2)}%`;
+                dChgPct.className = `change-container ${colorClass}`;
+                dChgPct.style.color = diff >= 0 ? '#22ab94' : '#f23645';
+            }
+            if (dStatus && responseData.meta) {
+                const status = responseData.meta.marketStatus || 'REGULAR';
+                const isRegular = status === 'REGULAR';
+                const statusColor = isRegular ? '#22ab94' : '#f23645';
+                
+                dStatus.textContent = isRegular ? 'Market open' : `Market ${status.toLowerCase()}`;
+                dStatus.style.color = statusColor;
+                
+                const dot = dStatus.previousElementSibling;
+                if (dot) {
+                    dot.style.backgroundColor = statusColor;
+                }
+            }
+
+            // Update Dynamic Categories (Common Stock vs Crypto, etc.)
+            const dSpotType = document.getElementById('detail-spot-type');
+            const dAssetType = document.getElementById('detail-asset-type');
+            if (responseData.meta) {
+                const iType = responseData.meta.instrumentType;
+                if (iType === 'EQUITY') {
+                    if (dSpotType) dSpotType.textContent = 'Common Stock';
+                    if (dAssetType) dAssetType.textContent = responseData.meta.exchangeName || 'Stock';
+                } else if (iType === 'CRYPTOCURRENCY') {
+                    if (dSpotType) dSpotType.textContent = 'Spot';
+                    if (dAssetType) dAssetType.textContent = 'Crypto';
+                } else {
+                    if (dSpotType) dSpotType.textContent = iType || 'Spot';
+                    if (dAssetType) dAssetType.textContent = market === 'stocks' ? 'Stock' : 'Crypto';
+                }
+            }
 
             // 1. Avg Vol (30d)
             const last30 = candles.slice(-30);
@@ -888,6 +1008,22 @@ export class SidebarController {
             }
         } catch (e) {
             console.error("Error fetching performance/avg volume:", e);
+        } finally {
+            // Ensure loading indicator is removed even if fetch fails or returns empty
+            if (detailAvgVol && detailAvgVol.textContent === 'loading...') {
+                detailAvgVol.textContent = 'n/a';
+            }
+            perfs.forEach(p => {
+                const el = document.getElementById(`perf-${p}`);
+                const box = document.getElementById(`perf-box-${p}`);
+                if (el) {
+                    el.style.opacity = '1';
+                    if (el.textContent === '...') el.textContent = 'n/a';
+                }
+                if (box && box.classList.contains('loading')) {
+                    box.classList.remove('loading');
+                }
+            });
         }
     }
 
@@ -1047,7 +1183,7 @@ export class SidebarController {
     async updateSeasonals(symbol, market = 'crypto') {
         const svg = document.getElementById('seasonals-svg');
         if (!svg) return;
-        svg.innerHTML = ''; // Clear
+        svg.innerHTML = '<text x="200" y="75" text-anchor="middle" fill="#787b86" font-size="12">Loading Seasonals...</text>';
 
         try {
             const currentYear = new Date().getUTCFullYear();
@@ -1060,37 +1196,43 @@ export class SidebarController {
 
             // Fetch bulk data for the last 3+ years in one request (approx 1100 days)
             const res = await fetch(`${apiBase}/api/market/history?symbol=${symbol.toUpperCase()}&timeframe=1d&market=${marketParam}&limit=1100`);
-            const allCandles = await res.json();
+            const responseData = await res.json();
+            const candles = responseData.candles || [];
 
-            if (Array.isArray(allCandles) && allCandles.length > 0) {
+            if (Array.isArray(candles) && candles.length > 0) {
                 for (const year of years) {
-                    const currentYearIdx = allCandles.findIndex(c => new Date(c.timestamp).getUTCFullYear() == year);
+                    const currentYearIdx = candles.findIndex(c => new Date(c.timestamp).getUTCFullYear() == year);
                     if (currentYearIdx === -1) continue;
 
-                    const yearCandles = allCandles.slice(currentYearIdx).filter(c => new Date(c.timestamp).getUTCFullYear() == year);
+                    const yearCandles = candles.slice(currentYearIdx).filter(c => new Date(c.timestamp).getUTCFullYear() == year);
                     if (yearCandles.length < 2) continue;
 
                     // Anchor 0% to the close of the PREVIOUS year's last candle if available
                     let firstPrice;
                     if (currentYearIdx > 0) {
-                        firstPrice = allCandles[currentYearIdx - 1].close;
+                        firstPrice = candles[currentYearIdx - 1].close;
                     } else {
                         firstPrice = yearCandles[0].open || yearCandles[0].close;
                     }
 
-                    let seasonalResults = yearCandles.map(c => {
+                    const rawResults = yearCandles.map(c => {
                         const d = new Date(c.timestamp);
                         const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 1);
                         const doy = Math.floor((c.timestamp - startOfYear) / 86400000);
-                        return { 
-                            day: doy, 
-                            percentage: ((c.close - firstPrice) / firstPrice) * 100,
-                            regular: c.close - firstPrice 
-                        };
+                        return { day: doy, percentage: ((c.close - firstPrice) / firstPrice) * 100, regular: c.close - firstPrice };
                     });
 
-                    if (seasonalResults.length > 0 && seasonalResults[0].day > 0) {
-                        seasonalResults.unshift({ day: 0, percentage: 0, regular: 0 });
+                    // Pad missing days (Interpolation) for 100% daily resolution
+                    const seasonalResults = [];
+                    let lastVal = { percentage: 0, regular: 0 };
+                    const dayMap = {};
+                    rawResults.forEach(r => dayMap[r.day] = r);
+
+                    for (let d = 0; d <= 366; d++) {
+                        if (dayMap[d]) {
+                            lastVal = dayMap[d];
+                        }
+                        seasonalResults.push({ day: d, ...lastVal });
                     }
 
                     results[year] = seasonalResults;
@@ -1102,14 +1244,23 @@ export class SidebarController {
             this.seasonalColors = colors;
             this.renderSeasonalsChart(results, colors);
             this.setupSeasonalsHover();
+
+            // Final fallback: if no data was rendered, clear the loading message
+            if (Object.keys(results).length === 0 && svg && svg.innerHTML.includes('Loading')) {
+                svg.innerHTML = '<text x="200" y="75" text-anchor="middle" fill="#787b86" font-size="12">No data available for seasonals</text>';
+            }
         } catch (e) {
             console.error("Error updating seasonals:", e);
+            if (svg && svg.innerHTML.includes('Loading')) {
+                svg.innerHTML = '<text x="200" y="75" text-anchor="middle" fill="#787b86" font-size="12">Error loading seasonals</text>';
+            }
         }
     }
 
     renderSeasonalsChart(results, colors) {
         const svg = document.getElementById('seasonals-svg');
         if (!svg) return;
+        // console.log(results, 'dddddddddddddddddddddd')
 
         const width = 400;
         const height = 150;
@@ -1137,7 +1288,7 @@ export class SidebarController {
         const range = maxVal - minVal;
 
         const getY = (val) => height - padding - (((val - minVal) / range) * (height - 2 * padding));
-        const getX = (index) => padding + (index / 365) * (width - 2 * padding);
+        const getX = (index) => padding + (index / 366) * (width - 2 * padding);
 
         const currentYear = new Date().getUTCFullYear();
         let bgContent = '';
@@ -1296,7 +1447,14 @@ export class SidebarController {
         const logo = document.getElementById('seasonals-view-logo');
         const fullName = document.getElementById('detail-full-name');
         if (title && fullName) title.textContent = fullName.textContent;
-        if (logo) logo.textContent = symbol.charAt(0);
+        
+        if (logo) {
+            const logoUrl = getTickerLogo(symbol, window.chart.currency, market);
+            logo.innerHTML = `
+                <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
+                <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center;">${symbol.charAt(0)}</div>
+            `;
+        }
 
         // Hide left toolbar
         const sideToolbar = document.querySelector('.side-toolbar');
@@ -1326,12 +1484,12 @@ export class SidebarController {
             const minAllowedYear = 1970; // All history back to Unix Epoch for stocks
             const years = [];
             // We'll populate 'years' dynamically or just loop
-            
+
             const apiBase = 'http://localhost:5000';
             const marketParam = market === 'stock' ? 'stocks' : market;
             const palette = ['#2962ff', '#089981', '#f7931a', '#f23645', '#bb86fc', '#ffeb3b', '#00bcd4', '#e91e63', '#4caf50', '#ff9800'];
             const results = {};
-            
+
             let currentEndTs = Date.now();
             let allCandles = [];
             let iterations = 0;
@@ -1340,13 +1498,14 @@ export class SidebarController {
             // Limit to 10 iterations (approx 140 years of history)
             while (currentEndTs > new Date(minAllowedYear, 0, 1).getTime() && iterations < 10) {
                 const res = await fetch(`${apiBase}/api/market/history?symbol=${symbol.toUpperCase()}&timeframe=1d&endDateTs=${currentEndTs}&market=${marketParam}&limit=5000`);
-                const batch = await res.json();
-                if (!Array.isArray(batch) || batch.length === 0) break;
+                const responseData = await res.json();
+                const candles = responseData.candles || [];
+                if (!Array.isArray(candles) || candles.length === 0) break;
 
-                allCandles = [...batch, ...allCandles];
+                allCandles = [...candles, ...allCandles];
                 // Update for next chunk if needed
-                currentEndTs = batch[0].timestamp - 1;
-                if (batch.length < 100) break; // Truly reached the beginning
+                currentEndTs = candles[0].timestamp - 1;
+                if (candles.length < 100) break; // Truly reached the beginning
                 iterations++;
             }
 
@@ -1370,20 +1529,25 @@ export class SidebarController {
                     firstPrice = yearData[0].open || yearData[0].close;
                 }
 
-                let seasonalData = yearData.map(k => {
+                const rawData = yearData.map(k => {
                     const d = new Date(k.timestamp);
                     const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 1);
-                    // Shift doy by 1 so that Day 0 is the previous year's anchor
-                    const doy = Math.floor((k.timestamp - startOfYear) / 86400000) + 1;
-                    return { 
-                        day: doy, 
-                        percentage: ((k.close - firstPrice) / firstPrice) * 100,
-                        regular: k.close
-                    };
+                    const doy = Math.floor((k.timestamp - startOfYear) / 86400000);
+                    return { day: doy, percentage: ((k.close - firstPrice) / firstPrice) * 100, regular: k.close };
                 });
 
-                // Always prepend Day 0 (Anchor)
-                seasonalData.unshift({ day: 0, percentage: 0, regular: firstPrice });
+                // Pad missing days for consistent daily resolution
+                const seasonalData = [];
+                let lastPoint = { percentage: 0, regular: firstPrice };
+                const fullDayMap = {};
+                rawData.forEach(r => fullDayMap[r.day] = r);
+
+                for (let d = 0; d <= 366; d++) {
+                    if (fullDayMap[d]) {
+                        lastPoint = fullDayMap[d];
+                    }
+                    seasonalData.push({ day: d, ...lastPoint });
+                }
 
                 results[y] = {
                     data: seasonalData,
@@ -1453,9 +1617,9 @@ export class SidebarController {
                 yearsFound.push(y);
             }
         });
-        
+
         // Save for export metadata
-        this.selectedYears = yearsFound.sort((a,b) => a-b);
+        this.selectedYears = yearsFound.sort((a, b) => a - b);
 
         // Calculate Average if enabled
         let averageData = [];
@@ -1725,7 +1889,7 @@ export class SidebarController {
 
         const valProp = this.seasonalViewMode || 'percentage';
         const isPercent = valProp === 'percentage';
-        
+
         const startYear = Math.min(this.currentStartYear, this.currentEndYear);
         const endYear = Math.max(this.currentStartYear, this.currentEndYear);
 
@@ -1742,27 +1906,27 @@ export class SidebarController {
             const data = results[year].data;
             yearPerformance[year] = { months: [] };
             const mBounds = this.getMonthBoundaries(year);
-            
+
             for (let m = 0; m < 12; m++) {
                 const startDay = mBounds[m];
-                const endDay = (m === 11) ? 366 : mBounds[m+1];
-                
+                const endDay = (m === 11) ? 366 : mBounds[m + 1];
+
                 const startPt = data.find(p => p.day === startDay) || [...data].reverse().find(p => p.day <= startDay) || data[0];
                 const endPt = data.find(p => p.day === endDay) || [...data].reverse().find(p => p.day <= endDay) || data[data.length - 1];
-                
+
                 let perf;
                 if (isPercent) {
                     const startVal = startPt.percentage;
                     const endVal = endPt.percentage;
-                    perf = ((1 + endVal/100) / (1 + (startVal || 0)/100) - 1) * 100;
+                    perf = ((1 + endVal / 100) / (1 + (startVal || 0) / 100) - 1) * 100;
                 } else {
                     perf = endPt.regular - startPt.regular;
                 }
-                
+
                 if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
                 yearPerformance[year].months[m] = perf;
             }
-            
+
             const firstPt = data[0];
             const lastPt = data[data.length - 1];
             yearPerformance[year].total = isPercent ? lastPt.percentage : (lastPt.regular - firstPt.regular);
@@ -1788,10 +1952,10 @@ export class SidebarController {
                     const data = results[y].data;
                     const mBounds = this.getMonthBoundaries(y);
                     const startDay = mBounds[m];
-                    const endDay = (m === 11) ? 366 : mBounds[m+1];
+                    const endDay = (m === 11) ? 366 : mBounds[m + 1];
                     const startPt = data.find(p => p.day === startDay) || [...data].reverse().find(p => p.day <= startDay) || data[0];
                     const endPt = data.find(p => p.day === endDay) || [...data].reverse().find(p => p.day <= endDay) || data[data.length - 1];
-                    let perf = isPercent ? (((1 + endPt.percentage/100) / (1 + (startPt.percentage || 0)/100) - 1) * 100) : (endPt.regular - startPt.regular);
+                    let perf = isPercent ? (((1 + endPt.percentage / 100) / (1 + (startPt.percentage || 0) / 100) - 1) * 100) : (endPt.regular - startPt.regular);
                     if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
                     if (perf !== null && !isNaN(perf)) { sum += perf; count++; }
                 });
@@ -1813,10 +1977,10 @@ export class SidebarController {
                 const data = results[y].data;
                 const mBounds = this.getMonthBoundaries(y);
                 const startDay = mBounds[m];
-                const endDay = (m === 11) ? 366 : mBounds[m+1];
+                const endDay = (m === 11) ? 366 : mBounds[m + 1];
                 const startPt = data.find(p => p.day === startDay) || [...data].reverse().find(p => p.day <= startDay) || data[0];
                 const endPt = data.find(p => p.day === endDay) || [...data].reverse().find(p => p.day <= endDay) || data[data.length - 1];
-                let perf = isPercent ? (((1 + endPt.percentage/100) / (1 + (startPt.percentage || 0)/100) - 1) * 100) : (endPt.regular - startPt.regular);
+                let perf = isPercent ? (((1 + endPt.percentage / 100) / (1 + (startPt.percentage || 0) / 100) - 1) * 100) : (endPt.regular - startPt.regular);
                 if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
                 if (perf !== null && !isNaN(perf)) { if (perf > 0) up++; else if (perf < 0) down++; }
             });
@@ -1867,7 +2031,7 @@ export class SidebarController {
             // Generate labels for Min, Max, and a few in between
             const labelCount = Math.min(5, (sliderMax - sliderMin) + 1);
             for (let i = 0; i < labelCount; i++) {
-                const year = labelCount > 1 
+                const year = labelCount > 1
                     ? Math.round(sliderMin + (i * (sliderMax - sliderMin) / (labelCount - 1)))
                     : sliderMin;
                 const span = document.createElement('span');
@@ -1883,7 +2047,7 @@ export class SidebarController {
 
             const sPerc = ((this.currentStartYear - sliderMin) / totalYears) * 100;
             const ePerc = ((this.currentEndYear - sliderMin) / totalYears) * 100;
-            
+
             thumbStart.style.left = `${sPerc}%`;
             thumbEnd.style.left = `${ePerc}%`;
 
@@ -1929,7 +2093,7 @@ export class SidebarController {
             // Bring active thumb to front
             thumbStart.style.zIndex = isStart ? "10" : "5";
             thumbEnd.style.zIndex = isStart ? "5" : "10";
-            
+
             const onMouseMove = (e) => handleDrag(e, isStart);
             const onMouseUp = () => {
                 document.removeEventListener('mousemove', onMouseMove);
@@ -2036,12 +2200,12 @@ export class SidebarController {
                 let sum = 0;
                 let count = 0;
                 Object.values(this.fullSeasonalsResults).forEach(obj => {
-                     const pt = obj.data.find(p => p.day === day) || [...obj.data].reverse().find(p => p.day <= day);
-                     if (pt) {
-                         const v = (pt[valProp] !== undefined) ? pt[valProp] : (pt.val || 0);
-                         sum += v;
-                         count++;
-                     }
+                    const pt = obj.data.find(p => p.day === day) || [...obj.data].reverse().find(p => p.day <= day);
+                    if (pt) {
+                        const v = (pt[valProp] !== undefined) ? pt[valProp] : (pt.val || 0);
+                        sum += v;
+                        count++;
+                    }
                 });
                 if (count > 0) {
                     const avg = sum / count;
@@ -2205,7 +2369,7 @@ export class SidebarController {
         // Detect current active view
         const chartView = document.getElementById('seasonals-full-chart');
         const tableView = document.getElementById('seasonals-full-table');
-        
+
         // Use computed style or display check
         if (chartView && chartView.style.display === 'none') {
             return this.exportSeasonalTableAsImage(mode);
@@ -2233,23 +2397,23 @@ export class SidebarController {
             // (1000x550 gives a tight, professional chart aesthetic)
             const targetWidth = 1000;
             const targetHeight = 550;
-            
+
             // Temporarily resize to target dimensions for clean rendering
             container.style.flex = 'none';
             container.style.width = `${targetWidth}px`;
             container.style.height = `${targetHeight}px`;
-            
+
             // Force a re-render at this specific size
             await this.renderFullSeasonalsChart();
-            
+
             // Critical: Wait for browser to recalculate layout/rects
             await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
             // Dimensions for canvas
-            const padding = 24; 
-            const headerHeight = 60; 
-            const bottomPadding = 24; 
-            
+            const padding = 24;
+            const headerHeight = 60;
+            const bottomPadding = 24;
+
             const canvasWidth = targetWidth + padding * 2;
             const canvasHeight = targetHeight + headerHeight + padding + bottomPadding;
 
@@ -2261,20 +2425,20 @@ export class SidebarController {
             ctx.scale(dpr, dpr);
 
             // 1. Draw Overall Background
-            ctx.fillStyle = '#000000'; 
+            ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-            ctx.fillStyle = '#000000'; 
+            ctx.fillStyle = '#000000';
             ctx.fillRect(padding, padding + headerHeight, targetWidth, targetHeight);
 
             // 2. Draw Title Header Area
             ctx.fillStyle = '#ffffff';
             ctx.font = 'bold 17px Arial'; // Not too big as requested
             ctx.textAlign = 'left';
-            
+
             // Get accurate metadata from DOM
             const ticker = document.getElementById('detail-symbol')?.textContent || this.currentTicker || 'BTC/USDT';
             const exchangeName = document.getElementById('detail-exchange')?.textContent || '';
-            
+
             ctx.fillText(`${ticker}${exchangeName ? ' • ' + exchangeName : ''}`, padding + 10, padding + 22);
 
             ctx.fillStyle = '#787b86';
@@ -2297,11 +2461,11 @@ export class SidebarController {
             svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
             svgClone.setAttribute('width', targetWidth);
             svgClone.setAttribute('height', targetHeight);
-            
+
             const svgData = new XMLSerializer().serializeToString(svgClone);
             const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
             const url = URL.createObjectURL(svgBlob);
-            
+
             const img = new Image();
             await new Promise((resolve, reject) => {
                 img.onload = resolve;
@@ -2314,7 +2478,7 @@ export class SidebarController {
 
             // 4. Draw All Labels (Ticks + Year Tags) - ON TOP
             const containerRect = container.getBoundingClientRect();
-            
+
             // 4a. Draw Tick Labels
             ctx.fillStyle = '#787b86';
             ctx.font = '10px Arial';
@@ -2333,23 +2497,23 @@ export class SidebarController {
                 const r = tag.getBoundingClientRect();
                 const relY = r.top - containerRect.top;
                 const relX = r.left - containerRect.left;
-                
+
                 const bgColor = window.getComputedStyle(tag).backgroundColor;
                 ctx.fillStyle = bgColor;
-                
+
                 // Draw rounded background box (adjusted width for inline text)
                 const spans = tag.querySelectorAll('span');
                 const yearNum = spans[0]?.textContent || '';
                 const yearPct = spans[1]?.textContent || '';
                 const combinedText = `${yearNum} (${yearPct})`;
-                
+
                 // Measure text to decide box width
                 ctx.font = 'bold 11px Arial';
                 const textWidth = ctx.measureText(combinedText).width;
                 const boxWidth = textWidth + 12;
-                
+
                 this.drawRoundedRect(ctx, relX + padding, relY + padding + headerHeight, boxWidth, 18, 4);
-                
+
                 // Draw text inside the tag (Inline)
                 ctx.fillStyle = (bgColor === 'rgb(255, 255, 255)' || bgColor === 'white') ? '#000000' : '#ffffff';
                 ctx.textAlign = 'left';
@@ -2412,10 +2576,10 @@ export class SidebarController {
                 const row = { year, months: [], total: 0 };
                 for (let m = 0; m < 12; m++) {
                     const startDay = mBounds[m];
-                    const endDay = (m === 11) ? 366 : mBounds[m+1];
+                    const endDay = (m === 11) ? 366 : mBounds[m + 1];
                     const startPt = data.find(p => p.day === startDay) || [...data].reverse().find(p => p.day <= startDay) || data[0];
                     const endPt = data.find(p => p.day === endDay) || [...data].reverse().find(p => p.day <= endDay) || data[data.length - 1];
-                    let perf = isPercent ? (((1 + endPt.percentage/100) / (1 + (startPt.percentage || 0)/100) - 1) * 100) : (endPt.regular - startPt.regular);
+                    let perf = isPercent ? (((1 + endPt.percentage / 100) / (1 + (startPt.percentage || 0) / 100) - 1) * 100) : (endPt.regular - startPt.regular);
                     if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
                     row.months.push(perf);
                 }
@@ -2433,11 +2597,11 @@ export class SidebarController {
             const dateColWidth = 40;
             const monthColWidth = 65;
             const yearColWidth = 75;
-            
+
             const tableWidth = dateColWidth + (monthColWidth * 12) + yearColWidth;
             const rowTotal = tableData.length + 1 + (this.showSeasonalAverage ? 1 : 0) + 1; // Headers + Data + Avg + Rise/Fall
             const tableHeight = rowTotal * rowHeight;
-            
+
             const canvasWidth = tableWidth + padding * 2;
             const canvasHeight = tableHeight + headerHeight + padding + 24;
 
@@ -2471,15 +2635,15 @@ export class SidebarController {
             let curY = padding + headerHeight;
             ctx.fillStyle = '#131722';
             ctx.fillRect(padding, curY, tableWidth, rowHeight);
-            
+
             ctx.fillStyle = '#787b86';
             ctx.font = 'bold 11px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText("Year", padding + dateColWidth/2, curY + 19);
+            ctx.fillText("Year", padding + dateColWidth / 2, curY + 19);
             for (let i = 0; i < 12; i++) {
-                ctx.fillText(monthNames[i], padding + dateColWidth + (i * monthColWidth) + monthColWidth/2, curY + 19);
+                ctx.fillText(monthNames[i], padding + dateColWidth + (i * monthColWidth) + monthColWidth / 2, curY + 19);
             }
-            ctx.fillText("Total", padding + tableWidth - yearColWidth/2, curY + 19);
+            ctx.fillText("Total", padding + tableWidth - yearColWidth / 2, curY + 19);
             curY += rowHeight;
 
             // 6. Draw Table Rows
@@ -2488,8 +2652,8 @@ export class SidebarController {
                 // Year label
                 ctx.fillStyle = '#ffffff';
                 ctx.textAlign = 'center';
-                ctx.fillText(row.year, padding + dateColWidth/2, curY + 19);
-                
+                ctx.fillText(row.year, padding + dateColWidth / 2, curY + 19);
+
                 // Monthly cells
                 for (let m = 0; m < 12; m++) {
                     const val = row.months[m];
@@ -2499,12 +2663,12 @@ export class SidebarController {
                         ctx.fillStyle = cellColor;
                         ctx.fillRect(x + 1, curY + 1, monthColWidth - 2, rowHeight - 2);
                     }
-                    
+
                     ctx.fillStyle = (val === null || isNaN(val)) ? '#434651' : (val === 0 ? '#787b86' : '#ffffff');
                     const text = (val === null || isNaN(val)) ? '—' : (isPercent ? (val > 0 ? '+' : '') + val.toFixed(1) + '%' : val.toFixed(2));
-                    ctx.fillText(text, x + monthColWidth/2, curY + 19);
+                    ctx.fillText(text, x + monthColWidth / 2, curY + 19);
                 }
-                
+
                 // Total column
                 const t = row.total;
                 const tx = padding + tableWidth - yearColWidth;
@@ -2516,7 +2680,7 @@ export class SidebarController {
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 11px Arial';
                 const tText = (isPercent ? (t > 0 ? '+' : '') + t.toFixed(1) + '%' : t.toFixed(2));
-                ctx.fillText(tText, tx + yearColWidth/2, curY + 19);
+                ctx.fillText(tText, tx + yearColWidth / 2, curY + 19);
                 ctx.font = '11px Arial';
 
                 curY += rowHeight;
@@ -2528,25 +2692,25 @@ export class SidebarController {
                 ctx.fillRect(padding, curY, tableWidth, rowHeight);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 11px Arial';
-                ctx.fillText("Average", padding + dateColWidth/2, curY + 19);
-                
+                ctx.fillText("Average", padding + dateColWidth / 2, curY + 19);
+
                 const footerAvgs = [];
                 for (let m = 0; m < 12; m++) {
                     let sum = 0, count = 0;
-                    tableData.forEach(r => { if (r.months[m] !== null) { sum += r.months[m]; count++; }});
+                    tableData.forEach(r => { if (r.months[m] !== null) { sum += r.months[m]; count++; } });
                     const avg = count > 0 ? sum / count : null;
                     footerAvgs.push(avg);
                     const x = padding + dateColWidth + (m * monthColWidth);
                     const avgText = avg === null ? '—' : (isPercent ? (avg > 0 ? '+' : '') + avg.toFixed(1) + '%' : avg.toFixed(2));
-                    ctx.fillText(avgText, x + monthColWidth/2, curY + 19);
+                    ctx.fillText(avgText, x + monthColWidth / 2, curY + 19);
                 }
-                
+
                 // Total Average (Sum of monthly averages)
                 let totalAvg = 0;
                 footerAvgs.forEach(a => { if (a !== null) totalAvg += a; });
                 const tx = padding + dateColWidth + (12 * monthColWidth);
                 const tText = totalAvg === 0 ? '—' : (isPercent ? (totalAvg > 0 ? '+' : '') + totalAvg.toFixed(1) + '%' : totalAvg.toFixed(2));
-                ctx.fillText(tText, tx + yearColWidth/2, curY + 19);
+                ctx.fillText(tText, tx + yearColWidth / 2, curY + 19);
 
                 curY += rowHeight;
             }
@@ -2556,24 +2720,24 @@ export class SidebarController {
             ctx.fillRect(padding, curY, tableWidth, rowHeight);
             ctx.fillStyle = '#787b86';
             ctx.font = '10px Arial';
-            ctx.fillText("Rises/Falls", padding + dateColWidth/2, curY + 19);
+            ctx.fillText("Rises/Falls", padding + dateColWidth / 2, curY + 19);
             for (let m = 0; m < 12; m++) {
                 let up = 0, down = 0;
                 tableData.forEach(r => { if (r.months[m] > 0) up++; else if (r.months[m] < 0) down++; });
                 const x = padding + dateColWidth + (m * monthColWidth);
                 ctx.fillStyle = '#089981';
-                ctx.fillText(`▲${up}`, x + monthColWidth/2 - 12, curY + 19);
+                ctx.fillText(`▲${up}`, x + monthColWidth / 2 - 12, curY + 19);
                 ctx.fillStyle = '#f23645';
-                ctx.fillText(`▼${down}`, x + monthColWidth/2 + 12, curY + 19);
+                ctx.fillText(`▼${down}`, x + monthColWidth / 2 + 12, curY + 19);
             }
             // Increase Y for Year total column rise/fall
             let yUp = 0, yDown = 0;
             tableData.forEach(r => { if (r.total > 0) yUp++; else if (r.total < 0) yDown++; });
             const yx = padding + dateColWidth + (12 * monthColWidth);
             ctx.fillStyle = '#089981';
-            ctx.fillText(`▲${yUp}`, yx + yearColWidth/2 - 12, curY + 19);
+            ctx.fillText(`▲${yUp}`, yx + yearColWidth / 2 - 12, curY + 19);
             ctx.fillStyle = '#f23645';
-            ctx.fillText(`▼${yDown}`, yx + yearColWidth/2 + 12, curY + 19);
+            ctx.fillText(`▼${yDown}`, yx + yearColWidth / 2 + 12, curY + 19);
 
             // 8. Output
             if (mode === 'download') {
@@ -2640,14 +2804,14 @@ export class SidebarController {
             const rowArr = [year];
             for (let m = 0; m < 12; m++) {
                 const startDay = mBounds[m];
-                const endDay = (m === 11) ? 366 : mBounds[m+1];
+                const endDay = (m === 11) ? 366 : mBounds[m + 1];
                 const startPt = data.find(p => p.day === startDay) || [...data].reverse().find(p => p.day <= startDay) || data[0];
                 const endPt = data.find(p => p.day === endDay) || [...data].reverse().find(p => p.day <= endDay) || data[data.length - 1];
-                let perf = isPercent ? (((1 + endPt.percentage/100) / (1 + (startPt.percentage || 0)/100) - 1) * 100) : (endPt.regular - startPt.regular);
+                let perf = isPercent ? (((1 + endPt.percentage / 100) / (1 + (startPt.percentage || 0) / 100) - 1) * 100) : (endPt.regular - startPt.regular);
                 if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
                 rowArr.push(perf === null ? "" : perf.toFixed(2) + (isPercent ? "%" : ""));
             }
-            const total = isPercent ? data[data.length-1].percentage : (data[data.length-1].regular - data[0].regular);
+            const total = isPercent ? data[data.length - 1].percentage : (data[data.length - 1].regular - data[0].regular);
             rowArr.push(total.toFixed(2) + (isPercent ? "%" : ""));
             csvRows.push(rowArr.join(","));
         });
@@ -2661,10 +2825,10 @@ export class SidebarController {
                     const data = results[y].data;
                     const mBounds = this.getMonthBoundaries(y);
                     const startDay = mBounds[m];
-                    const endDay = (m === 11) ? 366 : mBounds[m+1];
+                    const endDay = (m === 11) ? 366 : mBounds[m + 1];
                     const startPt = data.find(p => p.day === startDay) || [...data].reverse().find(p => p.day <= startDay) || data[0];
                     const endPt = data.find(p => p.day === endDay) || [...data].reverse().find(p => p.day <= endDay) || data[data.length - 1];
-                    let perf = isPercent ? (((1 + endPt.percentage/100) / (1 + (startPt.percentage || 0)/100) - 1) * 100) : (endPt.regular - startPt.regular);
+                    let perf = isPercent ? (((1 + endPt.percentage / 100) / (1 + (startPt.percentage || 0) / 100) - 1) * 100) : (endPt.regular - startPt.regular);
                     if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
                     if (perf !== null) { sum += perf; count++; }
                 });
@@ -2682,7 +2846,7 @@ export class SidebarController {
             let yUp = 0, yDown = 0;
             years.forEach(y => {
                 const data = results[y].data;
-                const total = isPercent ? data[data.length-1].percentage : (data[data.length-1].regular - data[0].regular);
+                const total = isPercent ? data[data.length - 1].percentage : (data[data.length - 1].regular - data[0].regular);
                 if (total > 0) yUp++; else if (total < 0) yDown++;
             });
             csvRows.push(`Year Rise/Fall,,,,,,,,,,,,,▲${yUp} ▼${yDown}`);

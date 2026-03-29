@@ -144,3 +144,20 @@ export const touchLayout = async (id) => {
     if (!response.ok) throw new Error('Failed to touch layout');
     return await response.json();
 };
+
+// Ticker Preference API
+export const saveTickerPreference = async (ticker, lastExchange) => {
+    const response = await fetch('http://localhost:5000/api/stock/preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: "1", ticker, lastExchange })
+    });
+    if (!response.ok) throw new Error('Failed to save ticker preference');
+    return await response.json();
+};
+
+export const getAllTickerPreferences = async () => {
+    const response = await fetch('http://localhost:5000/api/stock/preference/all?userId=1');
+    if (!response.ok) throw new Error('Failed to fetch ticker preferences');
+    return await response.json();
+};

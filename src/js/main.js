@@ -10,23 +10,26 @@ import { IndicatorsModalController } from './indicators-modal.js';
 import { ScriptEditorController } from './script-editor.js';
 import { LayoutMenuController } from './layout-menu-controller.js';
 import { ChartSettingsController } from './chart-settings.js';
-import { 
-    TF_CONFIG, 
-    candleCache, 
-    handleTimeframeChange, 
-    fetchStockData, 
-    loadStockData, 
+import {
+    TF_CONFIG,
+    candleCache,
+    handleTimeframeChange,
+    fetchStockData,
+    loadStockData,
     saveCurrentLayout,
-    setDateRangeAndInterval 
+    syncTickerPreferences,
+    setDateRangeAndInterval
 } from './data-service.js';
-import { 
-    updateClock, 
-    setupNumericConstraints, 
-    toggleTfPopup, 
-    closeTfPopup, 
+import {
+    updateClock,
+    setupNumericConstraints,
+    toggleTfPopup,
+    closeTfPopup,
     setTfActive,
     setChartModeActive,
-    setSearchTicker
+    setSearchTicker,
+    getTickerLogo,
+    extractSymbol
 } from './utils.js';
 
 // Global state / Legacy support
@@ -52,9 +55,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         isShowDrawing: true,
         onSync: bulkSyncDrawingTools,
         onLoadMore: async (earliestTs) => {
-            const stock = { ticker: window.chart.symbol };
+            const stock = {
+                ticker: window.chart.symbol,
+                market: window.chart.market,
+                exchange: window.chart.exchange
+            };
             const timeframe = window.chart.timeframe;
-            const olderBaseData = await fetchStockData(stock, timeframe, earliestTs);
+            const response = await fetchStockData(stock, timeframe, earliestTs);
+            const olderBaseData = response.candles || [];
 
             if (olderBaseData && olderBaseData.length > 0) {
                 window.chart.prependData(olderBaseData);
@@ -80,7 +88,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         localStorage.removeItem('activeZenScript');
                         console.log("Deactivated script persistent state removed.");
                     }
-                } catch(e) {}
+                } catch (e) { }
             }
         }
     });
@@ -116,12 +124,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupNumericConstraints();
     setInterval(updateClock, 1000);
     updateClock();
-    
+
     // Search Modal and Stock List Logic
     setupSearchModal();
     setupChartTypeSelector();
 
     // Initial data load
+    await syncTickerPreferences();
     await loadStockData();
 
     // Load active ZenScript if exists
@@ -167,6 +176,9 @@ function setupSearchModal() {
         searchModalBackdrop.style.display = 'none';
     }
 
+
+
+
     function renderRecentStocks() {
         const recent = JSON.parse(localStorage.getItem('recent_stocks') || '[]');
         if (recent.length === 0) {
@@ -179,12 +191,38 @@ function setupSearchModal() {
         recent.forEach(stock => {
             const div = document.createElement('div');
             div.className = 'search-item';
-            const displayTicker = stock.ticker.includes('.') ? stock.ticker.split('.')[0] : stock.ticker;
+            const displayTicker = extractSymbol(stock.ticker);
+            const exch = stock.primary_exchange || stock.exchange || '';
+            const market = stock.market || 'crypto';
+            const type = stock.type || 'spot';
+            const logoUrl = getTickerLogo(displayTicker, stock.currency, market);
+
             div.innerHTML = `
-                <span class="search-ticker">${displayTicker}</span>
-                <span class="search-name">${stock.name}</span>
+                <div class="search-item-left">
+                    <div class="search-item-icon">
+                        <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
+                        <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center;">${displayTicker[0]}</div>
+                    </div>
+                    <div class="search-item-symbol-container">
+                        <span class="search-ticker">${displayTicker}</span>
+                    </div>
+                </div>
+                <div class="search-item-description">${stock.name}</div>
+                <div class="search-item-right">
+                    <div class="search-item-tags">
+                        <span class="search-tag">${market}</span>
+                        <span class="search-tag">${type}</span>
+                    </div>
+                    <div class="search-exchange-group">
+                        <span class="search-exchange-name">${exch}</span>
+                        <div class="search-exchange-logo"></div>
+                    </div>
+                </div>
             `;
             div.dataset.id = stock.ticker;
+            div.dataset.exchange = exch;
+            div.dataset.currency = stock.currency;
+            div.dataset.market = market;
             searchResults.appendChild(div);
         });
         searchResults.style.display = 'block';
@@ -192,8 +230,8 @@ function setupSearchModal() {
 
     function saveRecentStock(stock) {
         let recent = JSON.parse(localStorage.getItem('recent_stocks') || '[]');
-        // Remove if exists to re-insert at top
-        recent = recent.filter(s => s.ticker !== stock.ticker);
+        // Remove if exists to re-insert at top (check BOTH ticker and exchange)
+        recent = recent.filter(s => s.ticker !== stock.ticker || s.primary_exchange !== stock.primary_exchange);
         recent.unshift(stock);
         // Limit to 10
         if (recent.length > 10) recent.pop();
@@ -224,43 +262,71 @@ function setupSearchModal() {
 
         searchResults.innerHTML = '';
         const response = await searchStock(searchTerm);
-        const filteredStocks = response.data;
+        const filteredStocks = response.data || [];
 
         filteredStocks.forEach(stock => {
             const div = document.createElement('div');
             div.className = 'search-item';
-            
-            // Clean ticker: if it has '.' (Yahoo), only show the first part
-            const displayTicker = stock.ticker.includes('.') ? stock.ticker.split('.')[0] : stock.ticker;
-            
+
+            const displayTicker = extractSymbol(stock.ticker);
+            const exch = stock.primary_exchange || stock.exchange || '';
+            const market = stock.market || 'crypto';
+            const type = stock.type || 'spot';
+            const logoUrl = getTickerLogo(displayTicker, stock.currency_name, market);
+
             div.innerHTML = `
-                <span class="search-ticker">${displayTicker}</span>
-                <span class="search-name">${stock.name}</span>
+                <div class="search-item-left">
+                    <div class="search-item-icon">
+                        <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
+                        <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center;">${displayTicker[0]}</div>
+                    </div>
+                    <div class="search-item-symbol-container">
+                        <span class="search-ticker">${displayTicker}</span>
+                    </div>
+                </div>
+                <div class="search-item-description">${stock.name}</div>
+                <div class="search-item-right">
+                    <div class="search-item-tags">
+                        <span class="search-tag">${market}</span>
+                        <span class="search-tag">${type}</span>
+                    </div>
+                    <div class="search-exchange-group">
+                        <span class="search-exchange-name">${exch}</span>
+                        <div class="search-exchange-logo"></div>
+                    </div>
+                </div>
             `;
             div.dataset.id = stock.ticker;
+            div.dataset.exchange = exch;
+            div.dataset.currency = stock.currency_name;
+            div.dataset.market = market;
             searchResults.appendChild(div);
         });
 
         searchResults.style.display = filteredStocks.length > 0 ? 'block' : 'none';
     });
 
+
     searchResults.addEventListener('click', async (e) => {
         const item = e.target.closest('.search-item');
         if (item) {
             const tickerSpan = item.querySelector('.search-ticker');
-            const nameSpan = item.querySelector('.search-name');
+            const descEl = item.querySelector('.search-item-description');
             const ticker = tickerSpan ? tickerSpan.textContent : '';
-            const name = nameSpan ? nameSpan.textContent : '';
-            
+            const name = descEl ? descEl.textContent : '';
+            const exchange = item.dataset.exchange || '';
+
             // Save to recent
-            saveRecentStock({ ticker: item.dataset.id, name });
+            saveRecentStock({ ticker: item.dataset.id, name, primary_exchange: exchange, currency: item.dataset.currency, market: item.dataset.market });
 
             searchInput.value = ticker;
             searchInput.dataset.stockId = item.dataset.id;
+            searchInput.dataset.exchange = exchange;
             closeSearchModal();
             await loadStockData();
         }
     });
+
 }
 
 // Chart Type Selector functions
