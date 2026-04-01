@@ -11,14 +11,14 @@ import { ScriptEditorController } from './script-editor.js';
 import { LayoutMenuController } from './layout-menu-controller.js';
 import { ChartSettingsController } from './chart-settings.js';
 import {
-    TF_CONFIG,
     candleCache,
     handleTimeframeChange,
     fetchStockData,
     loadStockData,
     saveCurrentLayout,
     syncTickerPreferences,
-    setDateRangeAndInterval
+    setDateRangeAndInterval,
+    fetchTimeframeConfigs
 } from './data-service.js';
 import {
     updateClock,
@@ -33,7 +33,6 @@ import {
 } from './utils.js';
 
 // Global state / Legacy support
-window.TF_CONFIG = TF_CONFIG;
 window.candleCache = candleCache;
 window.handleTimeframeChange = handleTimeframeChange;
 window.fetchStockData = fetchStockData;
@@ -50,8 +49,9 @@ window.setSearchTicker = setSearchTicker;
 // Initialize the managers when DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
     // Instantiate core chart
+    const initialTf = localStorage.getItem('last_timeframe') || '1d';
     window.chart = new Chartify('chart-container', {
-        timeframe: '1d',
+        timeframe: initialTf,
         isShowDrawing: true,
         onSync: bulkSyncDrawingTools,
         onLoadMore: async (earliestTs) => {
@@ -130,6 +130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupChartTypeSelector();
 
     // Initial data load
+    await fetchTimeframeConfigs();
     await syncTickerPreferences();
     await loadStockData();
 
@@ -195,7 +196,7 @@ function setupSearchModal() {
             const exch = stock.primary_exchange || stock.exchange || '';
             const market = stock.market || 'crypto';
             const type = stock.type || 'spot';
-            const logoUrl = getTickerLogo(displayTicker, stock.currency, market);
+            const logoUrl = getTickerLogo(stock.ticker, stock.currency, market);
 
             div.innerHTML = `
                 <div class="search-item-left">
@@ -272,7 +273,7 @@ function setupSearchModal() {
             const exch = stock.primary_exchange || stock.exchange || '';
             const market = stock.market || 'crypto';
             const type = stock.type || 'spot';
-            const logoUrl = getTickerLogo(displayTicker, stock.currency_name, market);
+            const logoUrl = getTickerLogo(stock.ticker, stock.currency_name, market);
 
             div.innerHTML = `
                 <div class="search-item-left">

@@ -55,8 +55,8 @@ export class SidebarController {
 
         // Listen for real-time ticker updates from Chartify
         window.addEventListener('chartify:ticker-update', (e) => {
-            const { symbol, data } = e.detail;
-            this.handleTickerUpdate(symbol, data);
+            const { symbol, data, exchange } = e.detail;
+            this.handleTickerUpdate(symbol, data, exchange);
         });
 
         // Listen for when chart loads new data (e.g. via search modal)
@@ -107,13 +107,18 @@ export class SidebarController {
         });
     }
 
-    handleTickerUpdate(symbol, data) {
-        // Only update if the symbol matches the currently selected one (strip / for comparison)
+    handleTickerUpdate(symbol, data, exchange) {
+        // Detailed Panel Refresh (Top Right)
         const detailSymbol = document.getElementById('detail-symbol');
-        const currentSelected = detailSymbol ? detailSymbol.textContent.replace('/', '') : '';
-        const incomingSymbol = symbol.replace('/', '');
+        const currentSelected = (detailSymbol ? detailSymbol.textContent : '').replace(/[/_]/g, '').toUpperCase();
+        const incomingSymbol = (symbol || '').replace(/[/_]/g, '').toUpperCase();
 
-        if (detailSymbol && currentSelected === incomingSymbol) {
+        // Verify that this update matches our ACTIVE chart's ticker AND exchange
+        const currentExchange = (window.chart?.exchange || '').toUpperCase();
+        const incomingExchange = (exchange || data?.exchange || '').toUpperCase();
+
+        if (detailSymbol && currentSelected === incomingSymbol && 
+           (!currentExchange || incomingExchange === currentExchange)) {
             const priceEl = document.getElementById('detail-price');
             const changeAbsEl = document.getElementById('detail-change-abs');
             const changePctEl = document.getElementById('detail-change-pct');
@@ -146,16 +151,21 @@ export class SidebarController {
                 }
             } else {
                 // Fallback to 24h data if sessionOpen is not yet available
-                const colorClass = data.change >= 0 ? 'change-up' : 'change-down';
-                if (changeAbsEl) {
-                    const sign = data.change >= 0 ? '+' : '';
-                    changeAbsEl.textContent = `${sign}${data.change.toFixed(2)}`;
-                    changeAbsEl.className = colorClass;
-                }
-                if (changePctEl) {
-                    const sign = data.changePercent >= 0 ? '+' : '';
-                    changePctEl.textContent = `${sign}${data.changePercent.toFixed(2)}%`;
-                    changePctEl.className = colorClass;
+                if (data.change !== undefined && data.changePercent !== undefined) {
+                    const colorClass = data.change >= 0 ? 'change-up' : 'change-down';
+                    if (changeAbsEl) {
+                        const sign = data.change >= 0 ? '+' : '';
+                        changeAbsEl.textContent = `${sign}${data.change.toFixed(2)}`;
+                        changeAbsEl.className = colorClass;
+                    }
+                    if (changePctEl) {
+                        const sign = data.changePercent >= 0 ? '+' : '';
+                        changePctEl.textContent = `${sign}${data.changePercent.toFixed(2)}%`;
+                        changePctEl.className = colorClass;
+                    }
+                } else {
+                    if (changeAbsEl) changeAbsEl.textContent = '...';
+                    if (changePctEl) changePctEl.textContent = '...';
                 }
             }
 
@@ -303,7 +313,8 @@ export class SidebarController {
                 // Determine symbol for history fetch (already normalized in constructor)
                 const ticker = item.symbol.toUpperCase();
                 const marketParam = item.market === 'stock' ? 'stocks' : item.market;
-                const res = await fetch(`${apiBase}/api/market/history?symbol=${ticker}&timeframe=1d&market=${marketParam}`);
+                const activeExch = item.exchange || window.chart?.exchange || '';
+                const res = await fetch(`${apiBase}/api/market/history?symbol=${ticker}&timeframe=1d&market=${marketParam}&exchange=${activeExch}`);
                 const responseData = await res.json();
                 const candles = responseData.candles || [];
 
@@ -902,9 +913,10 @@ export class SidebarController {
             const apiBase = 'http://localhost:5000';
             const ticker = symbol.toUpperCase();
             const marketParam = market === 'stock' ? 'stocks' : market;
+            const activeExch = window.chart?.exchange || '';
 
             // Fetch daily history for performance and volume via backend
-            const historyRes = await fetch(`${apiBase}/api/market/history?symbol=${ticker}&timeframe=1d&market=${marketParam}`);
+            const historyRes = await fetch(`${apiBase}/api/market/history?symbol=${ticker}&timeframe=1d&market=${marketParam}&exchange=${activeExch}`);
             const responseData = await historyRes.json();
             const candles = responseData.candles || [];
 
@@ -1193,9 +1205,10 @@ export class SidebarController {
             const results = {};
             const apiBase = 'http://localhost:5000';
             const marketParam = market === 'stock' ? 'stocks' : market;
+            const activeExch = window.chart?.exchange || '';
 
             // Fetch bulk data for the last 3+ years in one request (approx 1100 days)
-            const res = await fetch(`${apiBase}/api/market/history?symbol=${symbol.toUpperCase()}&timeframe=1d&market=${marketParam}&limit=1100`);
+            const res = await fetch(`${apiBase}/api/market/history?symbol=${symbol.toUpperCase()}&timeframe=1d&market=${marketParam}&limit=1100&exchange=${activeExch}`);
             const responseData = await res.json();
             const candles = responseData.candles || [];
 

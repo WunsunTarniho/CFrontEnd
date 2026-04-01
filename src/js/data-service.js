@@ -13,36 +13,19 @@ import {
 } from './service.js';
 import { DEFAULT_WATCHLIST_SYMBOLS } from './constants.js';
 
-// ── Item C: Smart Base Resolution ─────────────────────────────────────
-export const TF_CONFIG = {
-    '1s': { apiInterval: '1s', cacheKey: '1s', minutes: 1 / 60 },
-    '5s': { apiInterval: '1s', cacheKey: '1s', minutes: 5 / 60 },
-    '10s': { apiInterval: '1s', cacheKey: '1s', minutes: 10 / 60 },
-    '15s': { apiInterval: '1s', cacheKey: '1s', minutes: 15 / 60 },
-    '30s': { apiInterval: '1s', cacheKey: '1s', minutes: 30 / 60 },
-    '45s': { apiInterval: '1s', cacheKey: '1s', minutes: 45 / 60 },
-    '1m': { apiInterval: '1m', cacheKey: '1m', minutes: 1 },
-    '2m': { apiInterval: '1m', cacheKey: '1m', minutes: 2 },
-    '3m': { apiInterval: '3m', cacheKey: '3m', minutes: 3 },
-    '5m': { apiInterval: '5m', cacheKey: '5m', minutes: 5 },
-    '10m': { apiInterval: '5m', cacheKey: '5m', minutes: 10 },
-    '15m': { apiInterval: '15m', cacheKey: '15m', minutes: 15 },
-    '30m': { apiInterval: '30m', cacheKey: '30m', minutes: 30 },
-    '45m': { apiInterval: '15m', cacheKey: '15m', minutes: 45 },
-    '90m': { apiInterval: '30m', cacheKey: '30m', minutes: 90 },
-    '1h': { apiInterval: '1h', cacheKey: '1h', minutes: 60 },
-    '2h': { apiInterval: '2h', cacheKey: '2h', minutes: 120 },
-    '4h': { apiInterval: '4h', cacheKey: '4h', minutes: 240 },
-    '6h': { apiInterval: '6h', cacheKey: '6h', minutes: 360 },
-    '12h': { apiInterval: '12h', cacheKey: '12h', minutes: 720 },
-    '1d': { apiInterval: '1d', cacheKey: '1d', minutes: 1440 },
-    '1w': { apiInterval: '1d', cacheKey: '1d', special: 'week' },
-    '1mo': { apiInterval: '1d', cacheKey: '1d', special: 'month', months: 1 },
-    '3mo': { apiInterval: '1d', cacheKey: '1d', special: 'quarter', months: 3 },
-    '6mo': { apiInterval: '1d', cacheKey: '1d', special: 'halfyear', months: 6 },
-    '12mo': { apiInterval: '1d', cacheKey: '1d', special: 'year', months: 12 },
-};
+export let TF_SUPPORT_MAP = {};
 
+export async function fetchTimeframeConfigs() {
+    try {
+        const response = await fetch('http://localhost:5000/api/market/timeframes');
+        if (!response.ok) throw new Error('Failed to fetch timeframe configs');
+        TF_SUPPORT_MAP = await response.json();
+    } catch (error) {
+        console.error('Error fetching timeframe configs:', error);
+    }
+}
+
+// ── Item C: Data Retrieval Logic ─────────────────────────────────────
 export const candleCache = {};
 
 // Fetch candles from API via backend proxy
@@ -108,7 +91,13 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         if (savedExch) {
             selectedExchange = savedExch;
         } else {
-            selectedExchange = 'BINANCE';
+            // Smart defaults based on market (Phase 2 fix)
+            const market = activeLayout?.lastTickerId?.market || '';
+            if (market.toLowerCase().startsWith('stock') || market === 'commodities') {
+                selectedExchange = 'YAHOO';
+            } else {
+                selectedExchange = 'BINANCE';
+            }
         }
     }
     console.log(`[loadStockData] Resolved Exchange for ${stock_id}: ${selectedExchange}`);
@@ -118,9 +107,17 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         stock_id = 'BTCUSDT';
     }
 
-    let timeframe = document.querySelector('.tf-option.active')?.dataset.tf || '1d';
+    let timeframe = window.chart?.timeframe || localStorage.getItem('last_timeframe') || document.querySelector('.tf-option.active')?.dataset.tf || '1d';
+    
+    // Safety: Ensure timeframe is valid for this exchange (if map loaded)
+    const supported = TF_SUPPORT_MAP[selectedExchange] || [];
+    if (supported.length > 0 && !supported.includes(timeframe)) {
+        const fallback = supported.includes('1m') ? '1m' : supported[0];
+        console.warn(`[loadStockData] TF ${timeframe} not supported by ${selectedExchange}. Falling back to: ${fallback}`);
+        timeframe = fallback;
+    }
 
-    // Logic: Only override UI timeframe if:
+    // Logic: Only override UI/last-used timeframe if:
     // 1. Initial page load (window.chart.symbol is null)
     // 2. We are explicitly switching to a DIFFERENT layout (layoutId exists and is new)
     const isInitialLoad = !window.chart?.symbol;
@@ -129,6 +126,9 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
     if ((isLayoutSwitch || isInitialLoad) && activeLayout?.chartState?.timeframe) {
         timeframe = activeLayout.chartState.timeframe;
     }
+
+    // Sync UI to the resolved timeframe (Initial pass)
+    if (window.setTfActive) window.setTfActive(timeframe);
 
     const response = await findStockByTicker(stock_id);
     let stock = response?.data;
@@ -139,6 +139,9 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         const fallbackRes = await findStockByTicker('BTCUSDT');
         stock = fallbackRes?.data || { ticker: 'BTCUSDT', _id: BTC_ID, name: 'Bitcoin', primary_exchange: 'BINANCE' };
     }
+
+    // Update storage early to maintain consistency across ticker switches
+    localStorage.setItem('last_timeframe', timeframe);
 
     // --- 3. Safety Check if Layout doesn't exist ---
     if (!activeLayout) {
@@ -151,22 +154,25 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         layouts.unshift(activeLayout);
     }
 
-    if (window.chart.symbol && window.chart.symbol !== stock.ticker) {
-        // Unsubscribe from old symbol if it's not a default watchlist item
-        if (!DEFAULT_WATCHLIST_SYMBOLS.some(s => s.ticker === window.chart.symbol)) {
-            window.chart.unsubscribe(window.chart.symbol);
+    // --- 3. Safety Check: Clear cache if symbol OR exchange changes
+    const isSymbolChanged = window.chart.symbol && window.chart.symbol !== stock.ticker;
+    const isExchangeChanged = window.chart.exchange && window.chart.exchange !== selectedExchange;
+
+    if (isSymbolChanged || isExchangeChanged) {
+        // Unsubscribe from old symbol and exchange if it's not a default watchlist item
+        if (window.chart.symbol && !DEFAULT_WATCHLIST_SYMBOLS.some(s => s.ticker === window.chart.symbol)) {
+            window.chart.unsubscribe(window.chart.symbol, window.chart.exchange);
         }
+        // Purge old cache to ensure data freshness for the new source
         for (let key in candleCache) delete candleCache[key];
         window.chart.clearSymbol();
         window.chart.render();
     }
 
     // --- 3. Market-Based Timeframe Adjustment ---
-    updateTimeframeOptions(stock.market);
-    if ((stock.market === 'stocks' || stock.market === 'commodities') && timeframe.endsWith('s')) {
+    const supportsSeconds = TF_SUPPORT_MAP[selectedExchange]?.some(tf => tf.endsWith('s'));
+    if ((stock.market === 'stocks' || stock.market === 'commodities' || !supportsSeconds) && timeframe.endsWith('s')) {
         timeframe = '1m';
-        // Sync UI + Top Bar Label
-        if (window.setTfActive) window.setTfActive(timeframe);
     }
 
     if (selectedExchange) stock.exchange = selectedExchange;
@@ -179,7 +185,8 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
     const meta = responseData.meta || { marketStatus: 'REGULAR' };
 
     if (data.length > 0) {
-        candleCache[stock.ticker + '_' + timeframe] = data;
+        const cacheKey = `${stock.ticker}_${selectedExchange || stock.exchange}_${timeframe}`;
+        candleCache[cacheKey] = data;
         await window.chart.syncWithDatabase();
 
         window.chart.symbol = stock.ticker;
@@ -196,7 +203,27 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         }
         window.chart.marketStatus = meta.marketStatus;
 
-        window.chart.rawData = data;
+        // --- Smart Cache Merge ---
+        let finalData = data;
+        try {
+            const cacheKey = `chart_cache_${stock.ticker}_${selectedExchange || stock.exchange}_${timeframe}`;
+            const cachedDataStr = localStorage.getItem(cacheKey);
+            if (cachedDataStr) {
+                const cachedCandles = JSON.parse(cachedDataStr);
+                if (Array.isArray(cachedCandles) && cachedCandles.length > 0) {
+                    const lastApiTs = data[data.length - 1].timestamp;
+                    const newFromCache = cachedCandles.filter(c => c.timestamp > lastApiTs);
+                    if (newFromCache.length > 0) {
+                        console.log(`[SmartCache] Bridging gap with ${newFromCache.length} cached candles`);
+                        finalData = [...data, ...newFromCache];
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[SmartCache] Merge failed:', e);
+        }
+
+        window.chart.rawData = finalData;
 
         // Apply chart mode early to avoid flicker (fallback to candle if missing)
         window.chart.chartMode = activeLayout.chartState?.chartMode || 'candle';
@@ -266,7 +293,7 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
             window.chart.applyChartState(activeLayout.chartState);
 
             // Sync UI Timeframe and Chart Mode
-            if (activeLayout.chartState.timeframe && window.setTfActive) {
+            if (activeLayout.chartState.timeframe && window.setTfActive && isInitialLoad) {
                 window.setTfActive(activeLayout.chartState.timeframe);
             }
             if (activeLayout.chartState.chartMode && window.setChartModeActive) {
@@ -281,6 +308,10 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         }
 
         if (window.chart) window.chart.render();
+
+        // --- 5. Final UI Sync (After all layout/chart state is applied) ---
+        updateTimeframeOptions(stock.market, window.chart.exchange);
+        if (window.setTfActive) window.setTfActive(timeframe);
     }
 }
 
@@ -341,6 +372,10 @@ export async function saveCurrentLayout() {
 
 export async function handleTimeframeChange(timeframe) {
     if (!window.chart) return;
+    
+    // Persist Choice
+    localStorage.setItem('last_timeframe', timeframe);
+    
     window.setTfActive(timeframe);
     window.setChartModeActive(window.chart.chartMode || 'candle');
 
@@ -355,7 +390,8 @@ export async function handleTimeframeChange(timeframe) {
         return;
     }
 
-    const cacheKey = ticker + '_' + timeframe;
+    const exchange = window.chart.exchange || localStorage.getItem(`last_exchange_${ticker}`) || 'BINANCE';
+    const cacheKey = `${ticker}_${exchange}_${timeframe}`;
 
     // 1. Save current view BEFORE switching timeframe
     await saveCurrentLayout();
@@ -427,19 +463,46 @@ export async function setDateRangeAndInterval(rangeLabel, defaultTimeframe, btnE
     }
 }
 
-export function updateTimeframeOptions(market) {
+export function updateTimeframeOptions(market, exchange) {
     const secondsLabel = document.getElementById('tf-seconds-label');
     const secondsGroup = document.getElementById('tf-seconds-group');
 
-    if (secondsLabel && secondsGroup) {
-        if (market === 'stocks' || market === 'commodities') {
-            secondsLabel.style.display = 'none';
-            secondsGroup.style.display = 'none';
-        } else {
-            secondsLabel.style.display = 'block';
-            secondsGroup.style.display = 'grid';
-        }
+    if (!secondsLabel || !secondsGroup) return;
+
+    // Hide seconds category if market is not crypto OR exchange doesn't support sub-minute intervals
+    const supportsSeconds = (TF_SUPPORT_MAP[exchange] || []).some(tf => tf.endsWith('s'));
+    const shouldHideSeconds = (market === 'stocks' || market === 'commodities' || !supportsSeconds);
+
+    if (shouldHideSeconds) {
+        secondsLabel.style.display = 'none';
+        secondsGroup.style.display = 'none';
+    } else {
+        secondsLabel.style.display = 'block';
+        secondsGroup.style.display = 'grid';
     }
+
+    // Filter individual options
+    const supported = TF_SUPPORT_MAP[exchange] || [];
+    document.querySelectorAll('.tf-option').forEach(opt => {
+        const tf = opt.dataset.tf;
+        if (supported.length > 0 && !supported.includes(tf)) {
+            opt.style.display = 'none';
+        } else {
+            opt.style.display = 'flex';
+        }
+    });
+
+    // Also hide group labels if all options in that group are hidden
+    document.querySelectorAll('.tf-popup > .tf-group-label').forEach(label => {
+        if (label.id === 'tf-seconds-label') return;
+
+        const nextGroup = label.nextElementSibling;
+        if (nextGroup && nextGroup.classList.contains('tf-group')) {
+            const hasVisible = Array.from(nextGroup.children).some(child => child.style.display !== 'none');
+            label.style.display = hasVisible ? 'block' : 'none';
+            nextGroup.style.display = hasVisible ? 'grid' : 'none';
+        }
+    });
 }
 
 export async function syncTickerPreferences() {

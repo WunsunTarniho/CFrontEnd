@@ -111,7 +111,7 @@ export function setTfActive(tf) {
     const display = label[tf] || tf.toUpperCase();
     const el = document.getElementById('tf-label');
     if (el) el.textContent = display;
-    document.querySelectorAll('.tf-option').forEach(o => {
+    document.querySelectorAll('[data-tf]').forEach(o => {
         o.classList.toggle('active', o.dataset.tf === tf);
     });
 }
