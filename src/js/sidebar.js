@@ -35,13 +35,24 @@ export class SidebarController {
         this.currentStartYear = 2017;
         this.currentEndYear = 2026;
         this.lastSeasonalSyncTime = 0;
-        this.sidebarYearStartPrice = null;
-        this.fullYearStartPrice = null;
+        this.lastDetailedPrice = null;
+        this.sessionOpenPrice = null; // Used for Today's Change calculation
+        this.todayVolume = 0; // Cumulative Today's Volume (from 00:00 UTC)
+        this.lastVolumeSyncTs = 0;
         this.performanceBasePrices = {};
         this.lastPerformanceSyncTime = 0;
         this.currentLayouts = [];
         this.activeLayoutId = null;
         this.watchlistPrevClose = {}; // symbol -> prevClose price for correct % calculation
+        
+        // Hover States for persistence (separated to avoid cross-triggers)
+        this.sidebarHoverDay = null;
+        this.sidebarHoverPos = null;
+        this.fullHoverDay = null;
+        this.fullHoverPos = null;
+
+        this.lastSeasonalUpdateTime = 0; // For throttling fetches/renders
+        this.currentSeasonalSymbol = null;
 
         this.init();
     }
@@ -57,6 +68,12 @@ export class SidebarController {
         window.addEventListener('chartify:ticker-update', (e) => {
             const { symbol, data, exchange } = e.detail;
             this.handleTickerUpdate(symbol, data, exchange);
+        });
+
+        // Listen for real-time individual trades for volume accumulation
+        window.addEventListener('chartify:trade', (e) => {
+            const { symbol, exchange, trades } = e.detail;
+            this.handleTradeUpdate(symbol, exchange, trades);
         });
 
         // Listen for when chart loads new data (e.g. via search modal)
@@ -107,6 +124,36 @@ export class SidebarController {
         });
     }
 
+    handleTradeUpdate(symbol, exchange, trades) {
+        if (!Array.isArray(trades)) return;
+        
+        const detailSymbol = document.getElementById('detail-symbol');
+        // Normalize: remove delimiters AND .P suffix for comparison if needed, 
+        // but the most reliable way is exact match of processed tickers.
+        const currentSelected = (detailSymbol ? detailSymbol.textContent : '').toUpperCase();
+        const incomingSymbol = (symbol || '').toUpperCase();
+        const currentExchange = (window.chart?.exchange || '').toUpperCase();
+        const incomingExchange = (exchange || '').toUpperCase();
+
+        if (detailSymbol && (currentSelected === incomingSymbol || currentSelected.replace(/[/_]/g, '') === incomingSymbol.replace(/[/_]/g, '')) &&
+            (!currentExchange || incomingExchange === currentExchange)) {
+            
+            const volumeEl = document.getElementById('detail-volume');
+            if (volumeEl) {
+                // Accumulate volume from this batch of trades
+                const batchVol = trades.reduce((sum, t) => sum + (t.volume || 0), 0);
+                this.todayVolume += batchVol;
+                
+                // Throttled UI Update: Only update DOM if it hasn't been updated in the last 100ms
+                const now = Date.now();
+                if (!this._lastVolumeUiUpdate || now - this._lastVolumeUiUpdate > 100) {
+                    volumeEl.textContent = this.formatNumber(this.todayVolume);
+                    this._lastVolumeUiUpdate = now;
+                }
+            }
+        }
+    }
+
     handleTickerUpdate(symbol, data, exchange) {
         // Detailed Panel Refresh (Top Right)
         const detailSymbol = document.getElementById('detail-symbol');
@@ -117,8 +164,8 @@ export class SidebarController {
         const currentExchange = (window.chart?.exchange || '').toUpperCase();
         const incomingExchange = (exchange || data?.exchange || '').toUpperCase();
 
-        if (detailSymbol && currentSelected === incomingSymbol && 
-           (!currentExchange || incomingExchange === currentExchange)) {
+        if (detailSymbol && currentSelected === incomingSymbol &&
+            (!currentExchange || incomingExchange === currentExchange)) {
             const priceEl = document.getElementById('detail-price');
             const changeAbsEl = document.getElementById('detail-change-abs');
             const changePctEl = document.getElementById('detail-change-pct');
@@ -129,7 +176,8 @@ export class SidebarController {
                 if (this.lastDetailedPrice !== null && data.price !== this.lastDetailedPrice) {
                     priceEl.className = data.price > this.lastDetailedPrice ? 'change-up' : 'change-down';
                 }
-                priceEl.textContent = data.price.toLocaleString(undefined, { minimumFractionDigits: 2 });
+                const formattedPrice = data.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                this.updateRollingPrice(priceEl, formattedPrice);
                 this.lastDetailedPrice = data.price;
             }
 
@@ -169,17 +217,10 @@ export class SidebarController {
                 }
             }
 
-            if (volumeEl) {
-                let displayVol = data.volume;
-                // Sync with chart daily candle if available to show "Today's Volume" instead of rolling 24h
-                if (window.chart && window.chart.rawData && window.chart.rawData.length > 0) {
-                    const latest = window.chart.rawData[window.chart.rawData.length - 1];
-                    if (window.chart.timeframe === '1d') {
-                        displayVol = latest.volume;
-                    }
-                }
-                volumeEl.textContent = this.formatNumber(displayVol);
-            }
+            // if (volumeEl) {
+            //     // DISABLED: Stop using 24h rolling volume from ticker to avoid "shifting" Today's Volume
+            //     // volumeEl.textContent = this.formatNumber(data.volume);
+            // }
 
             // Real-time Seasonals Sync
             const now = Date.now();
@@ -198,7 +239,7 @@ export class SidebarController {
                         if (sData.length > 0) {
                             const lastP = sData[sData.length - 1];
                             const newPoint = { day: doy, percentage: pct, regular: points };
-                            
+
                             if (doy > lastP.day) {
                                 // Fill any gaps (e.g. over weekends) to ensure "one day one point"
                                 for (let d = lastP.day + 1; d <= doy; d++) {
@@ -373,6 +414,52 @@ export class SidebarController {
         if (num >= 1000000000) return (num / 1000000000).toFixed(2) + 'B';
         if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
         return Math.floor(num).toLocaleString();
+    }
+
+    updateRollingPrice(container, newPriceString) {
+        if (!container) return;
+
+        // Ensure container has the roller structure
+        let roller = container.querySelector('.price-roller');
+        if (!roller) {
+            container.innerHTML = '<div class="price-roller"></div>';
+            roller = container.querySelector('.price-roller');
+        }
+
+        const chars = newPriceString.split('');
+        const currentStrips = Array.from(roller.children);
+
+        // Adjust number of strips
+        if (currentStrips.length > chars.length) {
+            for (let i = currentStrips.length - 1; i >= chars.length; i--) {
+                currentStrips[i].remove();
+            }
+        }
+
+        chars.forEach((char, i) => {
+            let strip = roller.children[i];
+            const isDigit = /\d/.test(char);
+
+            if (!strip) {
+                strip = document.createElement('div');
+                roller.appendChild(strip);
+            }
+
+            if (isDigit) {
+                if (!strip.classList.contains('digit-strip')) {
+                    strip.className = 'digit-strip';
+                    strip.innerHTML = '0123456789'.split('').map(d => `<span class="digit-char">${d}</span>`).join('');
+                }
+                const digit = parseInt(char);
+                strip.style.transform = `translateY(-${digit * 38}px)`;
+            } else {
+                if (!strip.classList.contains('digit-static') || strip.textContent !== char) {
+                    strip.className = 'digit-static';
+                    strip.innerHTML = `<span class="digit-char">${char}</span>`;
+                    strip.style.transform = 'none';
+                }
+            }
+        });
     }
 
     setupTabLogic() {
@@ -832,29 +919,35 @@ export class SidebarController {
         const symbol = item.symbol.toUpperCase();
         const name = item.name || item.symbol;
         const market = item.market || 'crypto';
+        const exchange = (item.exchange || window.chart?.exchange || '').toUpperCase();
+        
+        // Anti-flicker: If it's the same symbol and it's just a background sync (like timeframe change), 
+        // skip everything to keep the current sidebar data intact.
+        const isNewSymbol = this._lastSidebarSymbol !== symbol || this._lastSidebarExchange !== exchange;
+        if (!isNewSymbol && skipLoadOnChart) return;
+
         this.currentMarket = market;
 
-        // Always update Detail Panel UI
+        // Always update basic Detail Panel header (Name/Symbol/Logo)
         const detailSymbol = document.getElementById('detail-symbol');
         const detailName = document.getElementById('detail-full-name');
         const detailLogo = document.getElementById('detail-logo');
 
         if (detailSymbol) detailSymbol.textContent = item.symbol;
         if (detailName) detailName.textContent = name;
-        
-        // Reset price and change labels to avoid showing previous symbol's data
-        const dPrice = document.getElementById('detail-price');
-        const dChgAbs = document.getElementById('detail-change-abs');
-        const dChgPct = document.getElementById('detail-change-pct');
-        const dVol = document.getElementById('detail-volume');
-        const dStatus = document.getElementById('detail-market-status');
 
-        if (dPrice) dPrice.textContent = item.price || '...';
-        if (dChgAbs) dChgAbs.textContent = item.changeAbs || (item.change ? item.change.split(' ')[0] : '...');
-        if (dChgPct) dChgPct.textContent = item.changePercent || (item.change ? item.change.split(' ')[1] : '...');
-        if (dVol) dVol.textContent = '...';
-        if (dStatus) dStatus.textContent = 'loading...';
-        
+        // Update Market Type label early
+        const dSpotTypeShort = document.getElementById('detail-spot-type');
+        if (dSpotTypeShort) {
+            if (symbol.endsWith('.P')) {
+                dSpotTypeShort.textContent = 'Futures';
+            } else if (market === 'stocks') {
+                dSpotTypeShort.textContent = 'Common Stock';
+            } else {
+                dSpotTypeShort.textContent = 'Spot';
+            }
+        }
+
         if (detailLogo) {
             const logoUrl = getTickerLogo(item.symbol, item.currency, item.market);
             const logoSymbol = extractSymbol(item.symbol);
@@ -862,34 +955,48 @@ export class SidebarController {
                 <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
                 <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center;">${logoSymbol[0]}</div>
             `;
-            detailLogo.style.background = 'none'; // Clear static background
+            detailLogo.style.background = 'none';
         }
 
-        // Update Exchange and Currency
+        // Update Exchange and Currency labels
         const detailExch = document.getElementById('detail-exchange');
         if (detailExch) {
-            detailExch.textContent = item.exchange || window.chart?.exchange || 'BINANCE';
+            detailExch.textContent = exchange || 'BINANCE';
         }
         const currencyLabels = document.querySelectorAll('.currency-label');
         currencyLabels.forEach(el => {
             el.textContent = item.currency || window.chart?.currency || 'USDT';
         });
 
-        // Update secondary data
-        // Reset seasonal base prices to avoid jumps while loading
-        this.sidebarYearStartPrice = null;
-        this.fullYearStartPrice = null;
-        this.seasonalData = null;
-        this.fullSeasonalsResults = null;
-        this.performanceBasePrices = null;
+        // Only Reset secondary labels and Re-fetch if it's actually a NEW symbol.
+        // This prevents the sidebar from going "loading..." when you just change timeframe.
+        if (isNewSymbol) {
+            this._lastSidebarSymbol = symbol;
+            this._lastSidebarExchange = exchange;
 
-        this.updatePerformanceData(symbol, market);
-        this.updateSeasonals(symbol, market);
+            const dPrice = document.getElementById('detail-price');
+            const dChgAbs = document.getElementById('detail-change-abs');
+            const dChgPct = document.getElementById('detail-change-pct');
+            const dVol = document.getElementById('detail-volume');
+            const dStatus = document.getElementById('detail-market-status');
+
+            if (dPrice) {
+                const initialPrice = item.price || '0.00';
+                this.updateRollingPrice(dPrice, initialPrice);
+            }
+            if (dChgAbs) dChgAbs.textContent = item.changeAbs || (item.change ? item.change.split(' ')[0] : '...');
+            if (dChgPct) dChgPct.textContent = item.changePercent || (item.change ? item.change.split(' ')[1] : '...');
+            if (dVol) dVol.textContent = '...';
+            if (dStatus) dStatus.textContent = 'loading...';
+
+            this.updatePerformanceData(symbol, market);
+            this.updateSeasonals(symbol, market);
+        }
 
         if (skipLoadOnChart) return;
-
+        
         const layoutId = window.chart ? window.chart.currentLayoutId : null;
-        loadStockData(layoutId, { _id: item.symbol });
+        loadStockData(layoutId, { _id: item.symbol, ticker: item.symbol, primary_exchange: item.exchange, market: item.market });
     }
 
     async updatePerformanceData(symbol, market = 'crypto') {
@@ -934,9 +1041,18 @@ export class SidebarController {
             const dVol = document.getElementById('detail-volume');
             const dStatus = document.getElementById('detail-market-status');
 
-            if (dPrice) dPrice.textContent = currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            if (dVol) dVol.textContent = this.formatNumber(lastCandle.volume);
+            if (dPrice) {
+                const formatted = currentPrice.toLocaleString(undefined, { 
+                    minimumFractionDigits: 2, 
+                    maximumFractionDigits: 2 
+                });
+                this.updateRollingPrice(dPrice, formatted);
+            }
             
+            // Sync "Today's Volume" with the latest Daily (1D) Candle
+            this.todayVolume = lastCandle.volume || 0;
+            if (dVol) dVol.textContent = this.formatNumber(this.todayVolume);
+
             const diff = currentPrice - this.sessionOpenPrice;
             const diffPct = (diff / this.sessionOpenPrice) * 100;
             const colorClass = diff >= 0 ? 'up' : 'down';
@@ -957,10 +1073,10 @@ export class SidebarController {
                 const status = responseData.meta.marketStatus || 'REGULAR';
                 const isRegular = status === 'REGULAR';
                 const statusColor = isRegular ? '#22ab94' : '#f23645';
-                
+
                 dStatus.textContent = isRegular ? 'Market open' : `Market ${status.toLowerCase()}`;
                 dStatus.style.color = statusColor;
-                
+
                 const dot = dStatus.previousElementSibling;
                 if (dot) {
                     dot.style.backgroundColor = statusColor;
@@ -972,14 +1088,16 @@ export class SidebarController {
             const dAssetType = document.getElementById('detail-asset-type');
             if (responseData.meta) {
                 const iType = responseData.meta.instrumentType;
+                const isFutures = ticker.endsWith('.P');
+
                 if (iType === 'EQUITY') {
                     if (dSpotType) dSpotType.textContent = 'Common Stock';
                     if (dAssetType) dAssetType.textContent = responseData.meta.exchangeName || 'Stock';
-                } else if (iType === 'CRYPTOCURRENCY') {
-                    if (dSpotType) dSpotType.textContent = 'Spot';
+                } else if (iType === 'CRYPTOCURRENCY' || isFutures) {
+                    if (dSpotType) dSpotType.textContent = isFutures ? 'Futures' : 'Spot';
                     if (dAssetType) dAssetType.textContent = 'Crypto';
                 } else {
-                    if (dSpotType) dSpotType.textContent = iType || 'Spot';
+                    if (dSpotType) dSpotType.textContent = isFutures ? 'Futures' : (iType || 'Spot');
                     if (dAssetType) dAssetType.textContent = market === 'stocks' ? 'Stock' : 'Crypto';
                 }
             }
@@ -1193,9 +1311,26 @@ export class SidebarController {
     }
 
     async updateSeasonals(symbol, market = 'crypto') {
+        const now = Date.now();
+        const isNewSymbol = symbol !== this.currentSeasonalSymbol;
+        const isTimeForUpdate = now - this.lastSeasonalUpdateTime > 300000; // 5 min throttle
+        
+        if (!isNewSymbol && !isTimeForUpdate && this.seasonalData) {
+            // Even if we don't fetch, we might need to re-render if the view was just opened
+            this.renderSeasonalsChart(this.seasonalData, this.seasonalColors);
+            return;
+        }
+
+        this.currentSeasonalSymbol = symbol;
+        this.lastSeasonalUpdateTime = now;
+
         const svg = document.getElementById('seasonals-svg');
         if (!svg) return;
-        svg.innerHTML = '<text x="200" y="75" text-anchor="middle" fill="#787b86" font-size="12">Loading Seasonals...</text>';
+        
+        // Show loading only if we don't have old data to show
+        if (!this.seasonalData || isNewSymbol) {
+            svg.innerHTML = '<text x="200" y="75" text-anchor="middle" fill="#787b86" font-size="12">Loading Seasonals...</text>';
+        }
 
         try {
             const currentYear = new Date().getUTCFullYear();
@@ -1230,18 +1365,20 @@ export class SidebarController {
 
                     const rawResults = yearCandles.map(c => {
                         const d = new Date(c.timestamp);
-                        const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 1);
-                        const doy = Math.floor((c.timestamp - startOfYear) / 86400000);
+                        const monthOffsets = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
+                        const doy = monthOffsets[d.getUTCMonth()] + d.getUTCDate();
                         return { day: doy, percentage: ((c.close - firstPrice) / firstPrice) * 100, regular: c.close - firstPrice };
                     });
 
                     // Pad missing days (Interpolation) for 100% daily resolution
                     const seasonalResults = [];
-                    let lastVal = { percentage: 0, regular: 0 };
+                    // Baseline: Day 0 is always 0% (Jan 1st 00:00 / Dec 31st 23:59 Close)
+                    let lastVal = { day: 0, percentage: 0, regular: 0 };
+                    seasonalResults.push(lastVal);
                     const dayMap = {};
                     rawResults.forEach(r => dayMap[r.day] = r);
 
-                    for (let d = 0; d <= 366; d++) {
+                    for (let d = 1; d <= 366; d++) {
                         if (dayMap[d]) {
                             lastVal = dayMap[d];
                         }
@@ -1254,6 +1391,17 @@ export class SidebarController {
             }
 
             this.seasonalData = results;
+            this.seasonalMaxDays = {}; // Store max real day per year
+            Object.keys(results).forEach(yr => {
+                const yrCandles = candles.filter(c => new Date(c.timestamp).getUTCFullYear() == yr);
+                if (yrCandles.length > 0) {
+                    const d = new Date(yrCandles[yrCandles.length - 1].timestamp);
+                    const monthOffsets = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
+                    const maxD = monthOffsets[d.getUTCMonth()] + d.getUTCDate();
+                    this.seasonalMaxDays[yr] = maxD;
+                }
+            });
+
             this.seasonalColors = colors;
             this.renderSeasonalsChart(results, colors);
             this.setupSeasonalsHover();
@@ -1273,19 +1421,24 @@ export class SidebarController {
     renderSeasonalsChart(results, colors) {
         const svg = document.getElementById('seasonals-svg');
         if (!svg) return;
-        // console.log(results, 'dddddddddddddddddddddd')
 
-        const width = 400;
-        const height = 150;
-        const padding = 10;
+        // Use dynamic dimensions to prevent stretching (lonjong)
+        const width = svg.clientWidth || 400;
+        const height = svg.clientHeight || 150; 
+        const padding = 20;
+        const paddingBottom = 30; // Perfect balance for 180px container
+
+        // Sync viewBox with actual dimensions
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
         // Filter to latest 3 years by default for sidebar
-        const availYears = Object.keys(results).map(Number).sort((a, b) => b - a);
-        const endY = availYears[0];
-        const startY = availYears[Math.min(2, availYears.length - 1)];
+        const availYearsList = Object.keys(results).map(Number).sort((a, b) => b - a);
+        const endY = availYearsList[0];
+        const startY = availYearsList[Math.min(2, availYearsList.length - 1)];
 
         const filteredResults = {};
-        availYears.forEach(y => {
+        availYearsList.forEach(y => {
             if (y >= startY && y <= endY) filteredResults[y] = results[y];
         });
 
@@ -1296,23 +1449,38 @@ export class SidebarController {
         });
         if (allValues.length === 0) return;
 
-        const maxVal = Math.max(...allValues, 10); // Min 10% range
+        // Sync viewBox with actual dimensions
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+        const maxVal = Math.max(...allValues, 10);
         const minVal = Math.min(...allValues, -10);
         const range = maxVal - minVal;
+        this._lastSidebarSeasonalMin = minVal;
+        this._lastSidebarSeasonalRange = range;
 
-        const getY = (val) => height - padding - (((val - minVal) / range) * (height - 2 * padding));
+        const getY = (val) => height - paddingBottom - (((val - minVal) / (range || 1)) * (height - padding - paddingBottom));
         const getX = (index) => padding + (index / 366) * (width - 2 * padding);
+
+        if (!results || !colors) return;
 
         const currentYear = new Date().getUTCFullYear();
         let bgContent = '';
-        // Draw Grid and Zero Line
         const zeroY = getY(0);
         bgContent += `<line x1="0" y1="${zeroY}" x2="${width}" y2="${zeroY}" class="seasonal-zero-line" />`;
 
-        // Vertical grid lines for quarters
-        [91, 182, 273].forEach(day => {
-            const x = getX(day);
-            bgContent += `<line x1="${x}" y1="0" x2="${x}" y2="${height}" class="seasonal-grid" />`;
+        // Specific months: Feb, May, Aug, Nov (Normalized 366-day scale)
+        const labels = [
+            { d: 31, n: 'Feb' },
+            { d: 121, n: 'May' },
+            { d: 213, n: 'Aug' },
+            { d: 305, n: 'Nov' }
+        ];
+
+        labels.forEach(q => {
+            const x = getX(q.d);
+            bgContent += `<line x1="${x}" y1="0" x2="${x}" y2="${height - paddingBottom}" class="seasonal-grid" />`;
+            bgContent += `<text x="${x}" y="${height - 5}" fill="#787b86" font-size="10" font-weight="500" text-anchor="middle">${q.n}</text>`;
         });
         svg.innerHTML = bgContent;
 
@@ -1330,12 +1498,12 @@ export class SidebarController {
             path.setAttribute("d", pathD);
             path.setAttribute("class", "seasonal-path");
             path.setAttribute("stroke", colors[year]);
+            
             if (year == currentYear) {
                 path.setAttribute("stroke-width", "1.5");
-                // Add pulsing marker at the end for current year
                 const lastIdx = data.length - 1;
                 const lx = getX(data[lastIdx].day);
-                const ly = getY(data[lastIdx].percentage || data[lastIdx].val || 0);
+                const ly = getY(data[lastIdx].percentage || 0);
 
                 const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
                 dot.setAttribute("cx", lx);
@@ -1352,17 +1520,26 @@ export class SidebarController {
                 ring.setAttribute("class", "live-pulse-ring");
                 ring.setAttribute("stroke", colors[year]);
                 svg.appendChild(ring);
+                path.setAttribute("opacity", "1");
             } else {
-                path.setAttribute("opacity", "0.7");
+                path.setAttribute("opacity", "0.8");
             }
             svg.appendChild(path);
         });
+
+        // Restore hover if active
+        if (this.sidebarHoverDay !== null) {
+            this.refreshSeasonalHover(true); // isSidebar = true
+        }
     }
 
     setupSeasonalsHover() {
         const svg = document.getElementById('seasonals-svg');
         const tooltip = document.getElementById('seasonal-tooltip');
         if (!svg || !tooltip || !this.seasonalData) return;
+        
+        tooltip.style.pointerEvents = 'none';
+        
         if (this.isSeasonalsHoverSetup) return; // Only setup once
         this.isSeasonalsHoverSetup = true;
 
@@ -1374,67 +1551,22 @@ export class SidebarController {
             const rect = svg.getBoundingClientRect();
             const relX = ((e.clientX - rect.left) / rect.width) * width;
 
-            // Calculate day (0-365)
-            let day = Math.round(((relX - padding) / (width - 2 * padding)) * 365);
-            day = Math.max(0, Math.min(365, day));
+            // Calculate day (0-366)
+            let day = Math.round(((relX - padding) / (width - 2 * padding)) * 366);
+            day = Math.max(0, Math.min(366, day));
 
-            // Find values for each year
-            let tooltipHtml = `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid #363c4e;padding-bottom:4px">Day ${day}</div>`;
-            let hasData = false;
-
-            Object.keys(this.seasonalData).sort((a, b) => b - a).forEach(year => {
-                const yearData = this.seasonalData[year];
-                // Find point for this day or the closest preceding point
-                const point = yearData.find(pt => pt.day === day) ||
-                    [...yearData].reverse().find(pt => pt.day <= day);
-
-                if (point) {
-                    const val = point.percentage || 0;
-                    const color = this.seasonalColors[year];
-                    tooltipHtml += `
-                        <div class="tooltip-row">
-                            <span style="color:${color};font-weight:700">${year}</span>
-                            <span class="${val >= 0 ? 'change-up' : 'change-down'}">${val >= 0 ? '+' : ''}${val.toFixed(2)}%</span>
-                        </div>
-                    `;
-                    hasData = true;
-                }
-            });
-
-            if (hasData) {
-                tooltip.innerHTML = tooltipHtml;
-                tooltip.style.display = 'block';
-
-                // Position tooltip
-                const tooltipRect = tooltip.getBoundingClientRect();
-                let x = e.clientX - rect.left + 15;
-                let y = e.clientY - rect.top + 15;
-
-                // Flip if overflow
-                if (x + tooltipRect.width > rect.width) x -= (tooltipRect.width + 30);
-
-                tooltip.style.left = `${x}px`;
-                tooltip.style.top = `${y}px`;
-
-                // Draw/Update hover line
-                let hoverLine = svg.querySelector('.seasonal-hover-line');
-                if (!hoverLine) {
-                    hoverLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    hoverLine.setAttribute("class", "seasonal-hover-line");
-                    svg.appendChild(hoverLine);
-                }
-                const lx = padding + (day / 365) * (width - 2 * padding);
-                hoverLine.setAttribute("x1", lx);
-                hoverLine.setAttribute("y1", 0);
-                hoverLine.setAttribute("x2", lx);
-                hoverLine.setAttribute("y2", height);
-            }
+            this.sidebarHoverDay = day;
+            this.sidebarHoverPos = { clientX: e.clientX, clientY: e.clientY };
+            this.refreshSeasonalHover(true);
         };
 
         const onMouseLeave = () => {
+            this.sidebarHoverDay = null;
+            this.sidebarHoverPos = null;
             tooltip.style.display = 'none';
             const hoverLine = svg.querySelector('.seasonal-hover-line');
             if (hoverLine) hoverLine.remove();
+            svg.querySelectorAll('.seasonal-sidebar-hover-dot').forEach(d => d.remove());
         };
 
         svg.addEventListener('mousemove', onMouseMove);
@@ -1460,7 +1592,7 @@ export class SidebarController {
         const logo = document.getElementById('seasonals-view-logo');
         const fullName = document.getElementById('detail-full-name');
         if (title && fullName) title.textContent = fullName.textContent;
-        
+
         if (logo) {
             const logoUrl = getTickerLogo(symbol, window.chart.currency, market);
             logo.innerHTML = `
@@ -1485,7 +1617,12 @@ export class SidebarController {
         // Clear and show loading
         const svg = document.getElementById('seasonals-full-svg');
         const labelCol = document.getElementById('seasonals-full-labels');
-        if (svg) svg.innerHTML = '<text x="500" y="225" fill="#787b86" text-anchor="middle" dominant-baseline="middle" font-size="16px">Loading historical data...</text>';
+        if (svg) {
+            const w = svg.clientWidth || 1000;
+            const h = svg.clientHeight || 500;
+            svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+            svg.innerHTML = `<text x="${w / 2}" y="${h / 2}" fill="#787b86" text-anchor="middle" dominant-baseline="middle" font-size="16px">Loading historical data...</text>`;
+        }
         if (labelCol) labelCol.innerHTML = '';
 
         try {
@@ -1503,6 +1640,7 @@ export class SidebarController {
             const palette = ['#2962ff', '#089981', '#f7931a', '#f23645', '#bb86fc', '#ffeb3b', '#00bcd4', '#e91e63', '#4caf50', '#ff9800'];
             const results = {};
 
+            const activeExch = window.chart?.exchange || '';
             let currentEndTs = Date.now();
             let allCandles = [];
             let iterations = 0;
@@ -1510,7 +1648,7 @@ export class SidebarController {
             // Fetch in bulk chunks of 5000 candles (approx 14 years of daily data)
             // Limit to 10 iterations (approx 140 years of history)
             while (currentEndTs > new Date(minAllowedYear, 0, 1).getTime() && iterations < 10) {
-                const res = await fetch(`${apiBase}/api/market/history?symbol=${symbol.toUpperCase()}&timeframe=1d&endDateTs=${currentEndTs}&market=${marketParam}&limit=5000`);
+                const res = await fetch(`${apiBase}/api/market/history?symbol=${symbol.toUpperCase()}&timeframe=1d&endDateTs=${currentEndTs}&market=${marketParam}&limit=5000&exchange=${activeExch}`);
                 const responseData = await res.json();
                 const candles = responseData.candles || [];
                 if (!Array.isArray(candles) || candles.length === 0) break;
@@ -1544,18 +1682,20 @@ export class SidebarController {
 
                 const rawData = yearData.map(k => {
                     const d = new Date(k.timestamp);
-                    const startOfYear = Date.UTC(d.getUTCFullYear(), 0, 1);
-                    const doy = Math.floor((k.timestamp - startOfYear) / 86400000);
+                    const monthOffsets = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
+                    const doy = monthOffsets[d.getUTCMonth()] + d.getUTCDate();
                     return { day: doy, percentage: ((k.close - firstPrice) / firstPrice) * 100, regular: k.close };
                 });
 
                 // Pad missing days for consistent daily resolution
                 const seasonalData = [];
-                let lastPoint = { percentage: 0, regular: firstPrice };
+                // Baseline: Day 0 is always 0% (Jan 1st 00:00 / Dec 31st 23:59 Close)
+                let lastPoint = { day: 0, percentage: 0, regular: firstPrice };
+                seasonalData.push(lastPoint);
                 const fullDayMap = {};
                 rawData.forEach(r => fullDayMap[r.day] = r);
 
-                for (let d = 0; d <= 366; d++) {
+                for (let d = 1; d <= 366; d++) {
                     if (fullDayMap[d]) {
                         lastPoint = fullDayMap[d];
                     }
@@ -1564,6 +1704,7 @@ export class SidebarController {
 
                 results[y] = {
                     data: seasonalData,
+                    maxDay: rawData.length > 0 ? Math.max(...rawData.map(r => r.day)) : 0,
                     color: palette[Object.keys(results).length % palette.length]
                 };
                 if (y === currentYear) this.fullYearStartPrice = firstPrice;
@@ -1598,17 +1739,21 @@ export class SidebarController {
         return [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365];
     }
 
-    renderFullSeasonalsChart(results, startYear, endYear) {
+    renderFullSeasonalsChart(results, startYear, endYear, overrideWidth, overrideHeight) {
         const svg = document.getElementById('seasonals-full-svg');
         const labelCol = document.getElementById('seasonals-full-labels');
         if (!svg || !labelCol || !results) return;
 
-        const width = 1000;
-        const height = 600;
-        const paddingLeft = 0;
-        const paddingRight = 80;
-        const paddingTop = 5; // No gap at top
-        const paddingBottom = 150; // 75% height (600-150=450, 450/600=0.75)
+        // Use override dimensions if provided (for Export) or client dimensions (for UI)
+        const width = overrideWidth || svg.clientWidth || 1000;
+        const height = overrideHeight || svg.clientHeight || 600;
+        const paddingLeft = 50; 
+        const paddingTop = 20; 
+        const paddingBottom = 60; // Tighter bottom for professional look 
+
+        // Sync viewBox with actual dimensions
+        svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
         svg.innerHTML = ''; // Clear
 
@@ -1634,29 +1779,29 @@ export class SidebarController {
         // Save for export metadata
         this.selectedYears = yearsFound.sort((a, b) => a - b);
 
-        // Calculate Average if enabled
+        // Calculate Average if enabled (Cache it locally for this render call)
         let averageData = [];
         if (this.showSeasonalAverage) {
-            // Using 367 slots (0 to 366) to account for Day 0 anchor and leap years
-            const dayMap = {};
-            for (let d = 0; d <= 366; d++) dayMap[d] = { sum: 0, count: 0 };
+            const dayMapSum = new Float64Array(367);
+            const dayMapCount = new Int32Array(367);
 
-            Object.values(filteredResults).forEach(obj => {
-                obj.data.forEach(p => {
+            for (const obj of Object.values(filteredResults)) {
+                for (const p of obj.data) {
                     const d = p.day;
-                    if (d <= 364 && dayMap[d]) {
-                        dayMap[d].sum += p[valProp];
-                        dayMap[d].count++;
+                    if (d <= 366) {
+                        dayMapSum[d] += p[valProp];
+                        dayMapCount[d]++;
                     }
-                });
-            });
+                }
+            }
 
             for (let d = 0; d <= 366; d++) {
-                if (dayMap[d].count > 0) {
-                    averageData.push({ day: d, val: dayMap[d].sum / dayMap[d].count });
+                if (dayMapCount[d] > 0) {
+                    averageData.push({ day: d, val: dayMapSum[d] / dayMapCount[d] });
                 }
             }
         }
+
 
         let allValuesRaw = [];
         Object.values(filteredResults).forEach(obj => {
@@ -1672,7 +1817,7 @@ export class SidebarController {
         // SAFETY: Filter out non-numeric values
         const allValues = allValuesRaw.filter(v => typeof v === 'number' && !isNaN(v));
         if (allValues.length === 0) {
-            svg.innerHTML = `<text x="500" y="300" fill="#787b86" text-anchor="middle" font-size="14">No data for selected range (${sYear}-${eYear})</text>`;
+            svg.innerHTML = `<text x="${width / 2}" y="${height / 2}" fill="#787b86" text-anchor="middle" font-size="14">No data for selected range (${sYear}-${eYear})</text>`;
             return;
         }
 
@@ -1685,18 +1830,45 @@ export class SidebarController {
         const roundedMin = Math.floor(dataMin / interval) * interval;
         const roundedMax = Math.ceil(dataMax / interval) * interval;
         const range = roundedMax - roundedMin;
+        this._lastFullSeasonalsMin = roundedMin;
+        this._lastFullSeasonalsMax = roundedMax;
+        this._lastFullSeasonalsRange = range;
 
         const getY = (val) => {
             const y = height - paddingBottom - (((val - roundedMin) / (range || 1)) * (height - paddingTop - paddingBottom));
             return isNaN(y) ? 0 : y;
         };
+        const formatVal = (v) => {
+            if (v === undefined || v === null || isNaN(v)) return '0.00';
+            // User requested: No '+' for positive values
+            return isPercent ? `${v.toFixed(1)}%` : `${v.toFixed(2)}`;
+        };
+
+        // 0. Dynamic Ruler Width Calculation (Now includes Year Tags for perfect fit)
+        const longestLabelCharCount = Object.keys(filteredResults).reduce((max, year) => {
+            const val = filteredResults[year].data[filteredResults[year].data.length - 1][valProp];
+            const labelStr = `${year} (${formatVal(val)})`; // "2024 (121.3%)"
+            return Math.max(max, labelStr.length);
+        }, 0);
+        
+        // Also check ruler scale labels (e.g. "-120.0%")
+        const scaleMaxChar = Math.max(formatVal(roundedMin).length, formatVal(roundedMax).length);
+        const finalCharCount = Math.max(longestLabelCharCount, scaleMaxChar);
+        
+        // Dynamic padding with a safe multiplier for different font widths
+        const paddingRight = Math.max(70, (finalCharCount * 7.5) + 20); 
+        
+        // Save for hover logic synchronization
+        this._lastFullSeasonalsPaddingRight = paddingRight;
+        this._lastFullSeasonalsPaddingBottom = paddingBottom;
+        this._lastFullSeasonalsPaddingLeft = paddingLeft;
+        this._lastFullSeasonalsPaddingTop = paddingTop;
+        this._lastFullSeasonalsMin = roundedMin;
+        this._lastFullSeasonalsRange = range;
+
         const getX = (index) => {
             const day = Math.min(366, Math.max(0, index));
             return paddingLeft + (day / 366) * (width - paddingLeft - paddingRight);
-        };
-        const formatVal = (v) => {
-            if (v === undefined || v === null || isNaN(v)) return '0.00';
-            return isPercent ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : `${v.toFixed(2)}`;
         };
 
         let bgContent = '';
@@ -1706,128 +1878,110 @@ export class SidebarController {
             bgContent += `<line x1="0" y1="${zeroY}" x2="${width - paddingRight}" y2="${zeroY}" stroke="#434651" stroke-width="1.5" stroke-dasharray="2 2" opacity="0.8" />`;
         }
 
-        // Accurate Monthly Grid & Labels
-        const monthStarts = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+        // Accurate Monthly Grid & Labels (Normalized 366-day scale)
+        const monthStarts = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
         monthStarts.forEach((day, i) => {
             const x = getX(day);
             // Grid line
             bgContent += `<line x1="${x}" y1="${paddingTop}" x2="${x}" y2="${height - paddingBottom}" stroke="#2a2e39" stroke-width="1" />`;
-            // Label
-            bgContent += `<text x="${x + 5}" y="${height - paddingBottom + 20}" fill="#787b86" font-size="11" font-weight="500">${monthNames[i]}</text>`;
+            // Label (Centered) - User requested white text
+            bgContent += `<text x="${x}" y="${height - paddingBottom + 20}" fill="#ffffff" font-size="11" font-weight="500" text-anchor="middle">${monthNames[i]}</text>`;
         });
 
         // End line
         bgContent += `<line x1="${width - paddingRight}" y1="${paddingTop}" x2="${width - paddingRight}" y2="${height - paddingBottom}" stroke="#2a2e39" stroke-width="1" />`;
 
-        // Percentage Labels on the Right Inside SVG (Consistent Ruler)
+        // Percentage Labels on the Right Inside SVG (Professional Ruler at the edge)
         for (let lvl = roundedMin; lvl <= roundedMax; lvl += interval) {
             const y = getY(lvl);
-            bgContent += `<text x="${width - paddingRight + 10}" y="${y + 4}" fill="#ffffff" font-size="10" font-weight="600" text-anchor="start">${formatVal(lvl)}</text>`;
+            // Draw Ruler Labels (White and slightly offset from the line ends for clarity)
+            // Add Tick Label (Ruler Scale) - User requested: Add a small gap between text and chart edge
+            // Increased +5 to +12 for a better professional gap in live UI
+            bgContent += `<text x="${width - paddingRight + 12}" y="${y + 4}" fill="#ffffff" font-size="10" font-weight="600" text-anchor="start" opacity="0.9">${formatVal(lvl)}</text>`;
+            // Horizontal grid lines stop at the chart area boundary
             bgContent += `<line x1="0" y1="${y}" x2="${width - paddingRight}" y2="${y}" stroke="#2a2e39" stroke-width="0.5" opacity="0.3" />`;
         }
         svg.innerHTML = bgContent; // Set background once
 
-        // Paths and Labels
-        labelCol.innerHTML = '';
+        // Paths and Labels Batching (Performance Fix)
+        let chartContent = bgContent;
+        const tagFragment = document.createDocumentFragment();
+        const currentYear = new Date().getUTCFullYear();
         const sortedYears = Object.keys(filteredResults).sort((a, b) => b - a);
 
         sortedYears.forEach(year => {
             const { data, color } = filteredResults[year];
             if (data.length < 2) return;
 
-            // Use the first point's day for the 'M' command
+            // 1. Build Path String
             let pathD = `M ${getX(data[0].day)} ${getY(data[0][valProp])}`;
             for (let i = 1; i < data.length; i++) {
                 pathD += ` L ${getX(data[i].day)} ${getY(data[i][valProp])}`;
             }
 
-            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            path.setAttribute("d", pathD);
-            path.setAttribute("fill", "none");
-            path.setAttribute("stroke", color);
-            const currentYear = new Date().getUTCFullYear();
-            path.setAttribute("stroke-width", year == currentYear ? "1.5" : "1.2");
-            path.setAttribute("opacity", year == currentYear ? "1" : "0.6");
-            svg.appendChild(path);
+            const isCurr = year == currentYear;
+            const strokeWidth = isCurr ? "1.5" : "1.2";
+            const opacity = isCurr ? "1" : "0.9";
+            
+            chartContent += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" opacity="${opacity}" class="seasonal-path" />`;
 
-            // Year Label Tag (Flag Style)
+            // 2. Build HTML Year Tag (Fragment)
             const lastPoint = data[data.length - 1];
             const lastVal = lastPoint[valProp];
             const tag = document.createElement('div');
             tag.className = 'year-tag';
             tag.style.background = color;
-            tag.style.color = '#ffffff'; // White text by default
+            tag.style.color = this.getContrastColor(color); 
             tag.innerHTML = `
                 <span class="year-num">${year}</span>
                 <span class="year-pct">${formatVal(lastVal)}</span>
             `;
-            // Position tag roughly based on last value
             const yPerc = (getY(lastVal) / height) * 100;
             tag.style.position = 'absolute';
             tag.style.top = `${yPerc}%`;
-            // Position tag at the chart boundary (920px in 1000px grid)
             const xPerc = ((width - paddingRight) / width) * 100;
             tag.style.left = `${xPerc}%`;
             tag.style.right = 'auto';
             tag.style.transform = 'translateY(-50%)';
-            labelCol.appendChild(tag);
+            tagFragment.appendChild(tag);
 
-            if (year == currentYear) {
-                const connector = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                connector.setAttribute("x1", getX(lastPoint.day));
-                connector.setAttribute("y1", getY(lastVal));
-                connector.setAttribute("x2", width - paddingRight);
-                connector.setAttribute("y2", getY(lastVal));
-                connector.setAttribute("stroke", color);
-                connector.setAttribute("stroke-width", "0.5");
-                connector.setAttribute("stroke-dasharray", "2 2");
-                svg.appendChild(connector);
+            // 3. Universal Connectors (Bridge the gap from last point to label)
+            const lx = getX(lastPoint.day);
+            const ly = getY(lastVal);
+            const connectorX2 = width - paddingRight - 10; // 10px safety gap before ruler
 
-                const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                dot.setAttribute("cx", getX(lastPoint.day));
-                dot.setAttribute("cy", getY(lastVal));
-                dot.setAttribute("r", "4");
-                dot.setAttribute("class", "live-pulse-dot");
-                dot.setAttribute("fill", color);
-                svg.appendChild(dot);
+            // Draw a subtle dashed connector for EVERY year to ensure alignment
+            chartContent += `<line x1="${lx}" y1="${ly}" x2="${connectorX2}" y2="${ly}" stroke="${color}" stroke-width="0.7" stroke-dasharray="2 2" opacity="0.6" />`;
 
-                const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                ring.setAttribute("cx", getX(lastPoint.day));
-                ring.setAttribute("cy", getY(lastVal));
-                ring.setAttribute("r", "5");
-                ring.setAttribute("class", "live-pulse-ring");
-                ring.setAttribute("stroke", color);
-                svg.appendChild(ring);
+            // Current Year Extras (Pulse dots)
+            if (isCurr) {
+                chartContent += `
+                    <circle cx="${lx}" cy="${ly}" r="4" class="live-pulse-dot" fill="${color}" />
+                    <circle cx="${lx}" cy="${ly}" r="5" class="live-pulse-ring" stroke="${color}" />
+                `;
             }
         });
 
-        // Finally, render Average Line if enabled
+        // 5. Finally, render Average Line if enabled (Batch to contentHtml)
         if (this.showSeasonalAverage && averageData.length > 1) {
-            let avgD = `M ${getX(averageData[0].day)} ${getY(averageData[0].val)}`;
+            let avgPathD = `M ${getX(averageData[0].day)} ${getY(averageData[0].val)}`;
             for (let i = 1; i < averageData.length; i++) {
-                avgD += ` L ${getX(averageData[i].day)} ${getY(averageData[i].val)}`;
+                avgPathD += ` L ${getX(averageData[i].day)} ${getY(averageData[i].val)}`;
             }
-            const avgPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            avgPath.setAttribute("d", avgD);
-            avgPath.setAttribute("fill", "none");
-            avgPath.setAttribute("stroke", "#ffffff"); // Pure white for average
-            avgPath.setAttribute("stroke-width", "1.5");
-            avgPath.setAttribute("stroke-dasharray", "4 4");
-            avgPath.setAttribute("stroke-linejoin", "round");
-            avgPath.setAttribute("stroke-linecap", "round");
-            avgPath.setAttribute("opacity", "0.9");
-            svg.appendChild(avgPath);
 
-            // Average Tag
+            // Add Avg Path to SVG string
+            chartContent += `<path d="${avgPathD}" fill="none" stroke="#ffffff" stroke-width="2" stroke-dasharray="4 4" opacity="0.9" stroke-linecap="round" />`;
+
+            // Add Avg Tag to Fragment
             const lastAvg = averageData[averageData.length - 1];
             const tag = document.createElement('div');
             tag.className = 'year-tag average-tag';
             tag.style.background = '#ffffff';
-            tag.style.color = '#000000'; // Black text
+            tag.style.color = '#000000';
             tag.innerHTML = `
-                <span class="year-num" style="color:#000000">AVG</span>
+                <span class="year-num" style="color:#000000">Avg</span>
                 <span class="year-pct" style="color:#000000">${formatVal(lastAvg.val)}</span>
             `;
             const yPerc = (getY(lastAvg.val) / height) * 100;
@@ -1836,14 +1990,184 @@ export class SidebarController {
             const xPerc = ((width - paddingRight) / width) * 100;
             tag.style.left = `${xPerc}%`;
             tag.style.transform = 'translateY(-50%)';
-            labelCol.appendChild(tag);
+            tagFragment.appendChild(tag);
         }
+
+        // 6. Push final results to DOM (The only two DOM writes for the whole render)
+        svg.innerHTML = chartContent;
+        labelCol.innerHTML = '';
+        labelCol.appendChild(tagFragment);
 
         // Synchronize Table View if active
         const tableWrapper = document.getElementById('seasonals-full-table');
         if (tableWrapper && tableWrapper.style.display === 'flex') {
             this.renderSeasonalTable(this.fullSeasonalsResults);
         }
+
+        // Restore hover if active
+        if (this.fullHoverDay !== null) {
+            this.refreshSeasonalHover(false); // isSidebar = false
+        }
+    }
+
+    refreshSeasonalHover(isSidebar) {
+        const svg = document.getElementById(isSidebar ? 'seasonals-svg' : 'seasonals-full-svg');
+        const tooltip = document.getElementById(isSidebar ? 'seasonal-tooltip' : 'seasonals-full-tooltip');
+        const day = isSidebar ? this.sidebarHoverDay : this.fullHoverDay;
+        const pos = isSidebar ? this.sidebarHoverPos : this.fullHoverPos;
+        const results = isSidebar ? this.seasonalData : this.fullSeasonalsResults;
+        const colors = isSidebar ? this.seasonalColors : this.fullSeasonalsResults; // Note: Sidebar uses a separate color map, Full uses object property
+
+        if (!svg || !tooltip || !results || day === null || !pos) return;
+
+        const rect = svg.getBoundingClientRect();
+        // Use dynamic dimensions to match the render exactly
+        const width = svg.clientWidth || (isSidebar ? 400 : 1000);
+        const height = svg.clientHeight || (isSidebar ? 150 : 600);
+        
+        const pLeft = isSidebar ? 20 : (this._lastFullSeasonalsPaddingLeft || 50); 
+        const pRight = isSidebar ? 20 : (this._lastFullSeasonalsPaddingRight || 100);
+        const pTop = isSidebar ? 20 : (this._lastFullSeasonalsPaddingTop || 20); 
+        const pBot = isSidebar ? 30 : (this._lastFullSeasonalsPaddingBottom || 150); 
+
+        // Handle Leap Year specific tooltip display (using 2024 as reference)
+        const dateObj = new Date(2024, 0, day || 1);
+        const dateStr = day === 0 ? "1 Jan (Base)" : dateObj.toLocaleString('en-GB', { day: 'numeric', month: 'short' });
+        let tooltipHtml = `<div style="font-weight:700;margin-bottom:${isSidebar ? '4px' : '6px'};border-bottom:1px solid #363c4e;padding-bottom:${isSidebar ? '4px' : '6px'}">${dateStr}</div>`;
+        let hasData = false;
+
+        const valProp = isSidebar ? 'percentage' : (this.seasonalViewMode || 'percentage');
+        const isPercent = valProp === 'percentage';
+
+        const years = Object.keys(results).sort((a, b) => b - a);
+        years.forEach(year => {
+            if (!isSidebar) {
+                const yNum = parseInt(year);
+                if (yNum < Math.min(this.currentStartYear, this.currentEndYear) || yNum > Math.max(this.currentStartYear, this.currentEndYear)) return;
+            }
+
+            const data = isSidebar ? results[year] : results[year].data;
+            const color = isSidebar ? this.seasonalColors[year] : results[year].color;
+
+            const point = data.find(p => p.day === day) || [...data].reverse().find(p => p.day <= day);
+
+            if (point && point.day === day) {
+                const val = (point[valProp] !== undefined) ? point[valProp] : (point.val || 0);
+                tooltipHtml += `
+                    <div class="tooltip-row" style="margin: ${isSidebar ? '0' : '4px 0'}">
+                        <span style="color:${color};font-weight:700">${year}</span>
+                        <span class="${val >= 0 ? 'change-up' : 'change-down'}">${isPercent ? (val >= 0 ? '+' : '') + val.toFixed(2) + '%' : val.toFixed(2)}</span>
+                    </div>
+                `;
+                hasData = true;
+            }
+        });
+
+        // Average for Full View
+        if (!isSidebar && this.showSeasonalAverage) {
+            let sum = 0, count = 0;
+            Object.values(results).forEach(obj => {
+                const pt = obj.data.find(p => p.day === day);
+                if (pt) {
+                    sum += (pt[valProp] !== undefined) ? pt[valProp] : (pt.val || 0);
+                    count++;
+                }
+            });
+            if (count > 0) {
+                const avgVal = sum / count;
+                tooltipHtml += `
+                    <div class="tooltip-row" style="margin: 4px 0; border-top: 1px solid #363c4e; padding-top: 4px">
+                        <span style="color:#ffffff;font-weight:700">AVERAGE</span>
+                        <span class="${avgVal >= 0 ? 'change-up' : 'change-down'}">${isPercent ? (avgVal >= 0 ? '+' : '') + avgVal.toFixed(2) + '%' : avgVal.toFixed(2)}</span>
+                    </div>
+                `;
+            }
+        }
+
+        if (hasData) {
+            tooltip.innerHTML = tooltipHtml;
+            tooltip.style.display = 'block';
+            tooltip.style.pointerEvents = 'none';
+
+            const tRect = tooltip.getBoundingClientRect();
+            let tx = pos.clientX - rect.left + (isSidebar ? 15 : 20);
+            let ty = pos.clientY - rect.top + (isSidebar ? 15 : 20);
+
+            if (tx + tRect.width > rect.width) tx -= (tRect.width + (isSidebar ? 30 : 40));
+            if (!isSidebar && ty + tRect.height > rect.height) ty -= (tRect.height + 40);
+
+            tooltip.style.left = `${tx}px`;
+            tooltip.style.top = `${ty}px`;
+        } else {
+            tooltip.style.display = 'none';
+        }
+
+        // Line
+        const className = isSidebar ? 'seasonal-hover-line' : 'seasonal-full-hover-line';
+        let hoverLine = svg.querySelector('.' + className);
+        if (!hoverLine) {
+            hoverLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            hoverLine.setAttribute("class", className);
+            if (!isSidebar) {
+                hoverLine.setAttribute("stroke", "#787b86");
+                hoverLine.setAttribute("stroke-width", "1");
+                hoverLine.setAttribute("stroke-dasharray", "4 4");
+            }
+            hoverLine.style.pointerEvents = 'none';
+            svg.appendChild(hoverLine);
+        }
+        // X calculation horizontal mapping
+        const lx = isSidebar 
+            ? pLeft + (day / 366) * (width - 2 * pLeft) 
+            : pLeft + (day / 366) * (width - pLeft - pRight);
+            
+        hoverLine.setAttribute("x1", lx);
+        hoverLine.setAttribute("y1", isSidebar ? 0 : pTop);
+        hoverLine.setAttribute("x2", lx);
+        hoverLine.setAttribute("y2", isSidebar ? height : (height - pBot));
+
+        // Dots
+        const dotClass = isSidebar ? 'seasonal-sidebar-hover-dot' : 'seasonal-hover-dot';
+        svg.querySelectorAll('.' + dotClass).forEach(d => d.remove());
+
+        const getYLocal = (val) => {
+            const rMin = isSidebar ? this._lastSidebarSeasonalMin : this._lastFullSeasonalsMin;
+            const rRange = isSidebar ? this._lastSidebarSeasonalRange : this._lastFullSeasonalsRange;
+            const y = height - pBot - (((val - (rMin || 0)) / (rRange || 1)) * (height - pTop - pBot));
+            return isNaN(y) ? 0 : y;
+        };
+
+        years.forEach(year => {
+            if (!isSidebar) {
+                const yNum = parseInt(year);
+                if (yNum < Math.min(this.currentStartYear, this.currentEndYear) || yNum > Math.max(this.currentStartYear, this.currentEndYear)) return;
+            }
+            const data = isSidebar ? results[year] : results[year].data;
+            const color = isSidebar ? this.seasonalColors[year] : results[year].color;
+
+            // Ensure maxDay is at least 366 for past years to avoid clipping normalized Dec 31
+            const yrNum = parseInt(year);
+            const currentYr = new Date().getUTCFullYear();
+            const maxD = yrNum < currentYr ? 366 : (isSidebar ? (this.seasonalMaxDays ? this.seasonalMaxDays[year] : 366) : results[year].maxDay);
+
+            if (day > maxD) return;
+
+            const pt = data.find(p => p.day === day) || [...data].reverse().find(p => p.day <= day);
+            if (pt) {
+                const val = (pt[valProp] !== undefined) ? pt[valProp] : (pt.val || 0);
+                const dy = getYLocal(val);
+                const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                dot.setAttribute("class", dotClass);
+                dot.setAttribute("cx", lx);
+                dot.setAttribute("cy", dy);
+                dot.setAttribute("r", isSidebar ? "5" : "6.5");
+                dot.setAttribute("fill", color);
+                dot.setAttribute("stroke", "#131722");
+                dot.setAttribute("stroke-width", "1.5");
+                dot.setAttribute("pointer-events", "none");
+                svg.appendChild(dot);
+            }
+        });
     }
 
     getNiceInterval(range) {
@@ -1910,7 +2234,7 @@ export class SidebarController {
 
         let tableHtml = `<table class="seasonal-table"><thead><tr><th style="position: sticky; left: 0; z-index: 5;">Date</th>`;
         months.forEach(m => tableHtml += `<th>${m}</th>`);
-        tableHtml += `<th>Year</th></tr></thead><tbody>`;
+        tableHtml += `<th style="border-left: 1px solid #363c4e; color: #2962ff">Total</th></tr></thead><tbody>`;
 
         const yearPerformance = {};
         const years = Object.keys(results).map(Number).filter(y => y >= startYear && y <= endYear).sort((a, b) => b - a);
@@ -1929,20 +2253,20 @@ export class SidebarController {
 
                 let perf;
                 if (isPercent) {
-                    const startVal = startPt.percentage;
-                    const endVal = endPt.percentage;
-                    perf = ((1 + endVal / 100) / (1 + (startVal || 0) / 100) - 1) * 100;
+                    const startVal = (m === 0) ? 0 : (startPt.percentage || 0);
+                    const endVal = endPt.percentage || 0;
+                    perf = ((1 + endVal / 100) / (1 + startVal / 100) - 1) * 100;
                 } else {
-                    perf = endPt.regular - startPt.regular;
+                    const startVal = (m === 0) ? 0 : startPt.regular;
+                    perf = endPt.regular - startVal;
                 }
 
                 if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
                 yearPerformance[year].months[m] = perf;
             }
 
-            const firstPt = data[0];
             const lastPt = data[data.length - 1];
-            yearPerformance[year].total = isPercent ? lastPt.percentage : (lastPt.regular - firstPt.regular);
+            yearPerformance[year].total = isPercent ? lastPt.percentage : lastPt.regular;
         });
 
         years.forEach(year => {
@@ -1966,20 +2290,30 @@ export class SidebarController {
                     const mBounds = this.getMonthBoundaries(y);
                     const startDay = mBounds[m];
                     const endDay = (m === 11) ? 366 : mBounds[m + 1];
-                    const startPt = data.find(p => p.day === startDay) || [...data].reverse().find(p => p.day <= startDay) || data[0];
-                    const endPt = data.find(p => p.day === endDay) || [...data].reverse().find(p => p.day <= endDay) || data[data.length - 1];
-                    let perf = isPercent ? (((1 + endPt.percentage / 100) / (1 + (startPt.percentage || 0) / 100) - 1) * 100) : (endPt.regular - startPt.regular);
-                    if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
-                    if (perf !== null && !isNaN(perf)) { sum += perf; count++; }
-                });
-                const avg = count > 0 ? sum / count : null;
-                monthlyAvgs.push(avg);
-                tableHtml += this.formatTableCell(avg, isPercent);
-            }
-            let totalAvg = 0;
-            monthlyAvgs.forEach(a => { if (a !== null) totalAvg += a; });
-            tableHtml += this.formatTableCell(totalAvg !== 0 ? totalAvg : null, isPercent, true);
-            tableHtml += `</tr>`;
+                const startPt = data.find(p => p.day === startDay) || [...data].reverse().find(p => p.day <= startDay) || data[0];
+                const endPt = data.find(p => p.day === endDay) || [...data].reverse().find(p => p.day <= endDay) || data[data.length - 1];
+
+                let perf;
+                if (isPercent) {
+                    const startVal = (m === 0) ? 0 : (startPt.percentage || 0);
+                    const endVal = endPt.percentage || 0;
+                    perf = ((1 + endVal / 100) / (1 + startVal / 100) - 1) * 100;
+                } else {
+                    const startVal = (m === 0) ? 0 : startPt.regular;
+                    perf = endPt.regular - startVal;
+                }
+
+                if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
+                if (perf !== null && !isNaN(perf)) { sum += perf; count++; }
+            });
+            const avg = count > 0 ? sum / count : null;
+            monthlyAvgs.push(avg);
+            tableHtml += this.formatTableCell(avg, isPercent);
+        }
+        let totalAvg = 0;
+        monthlyAvgs.forEach(a => { if (a !== null) totalAvg += a; });
+        tableHtml += this.formatTableCell(totalAvg !== 0 ? totalAvg : null, isPercent, true);
+        tableHtml += `</tr>`;
         }
 
         // Rises & Falls Row
@@ -1993,7 +2327,17 @@ export class SidebarController {
                 const endDay = (m === 11) ? 366 : mBounds[m + 1];
                 const startPt = data.find(p => p.day === startDay) || [...data].reverse().find(p => p.day <= startDay) || data[0];
                 const endPt = data.find(p => p.day === endDay) || [...data].reverse().find(p => p.day <= endDay) || data[data.length - 1];
-                let perf = isPercent ? (((1 + endPt.percentage / 100) / (1 + (startPt.percentage || 0) / 100) - 1) * 100) : (endPt.regular - startPt.regular);
+
+                let perf;
+                if (isPercent) {
+                    const startVal = (m === 0) ? 0 : (startPt.percentage || 0);
+                    const endVal = endPt.percentage || 0;
+                    perf = ((1 + endVal / 100) / (1 + startVal / 100) - 1) * 100;
+                } else {
+                    const startVal = (m === 0) ? 0 : startPt.regular;
+                    perf = endPt.regular - startVal;
+                }
+
                 if (endPt.day <= startPt.day && m > 0 && endPt.day < endDay - 5) perf = null;
                 if (perf !== null && !isNaN(perf)) { if (perf > 0) up++; else if (perf < 0) down++; }
             });
@@ -2014,11 +2358,11 @@ export class SidebarController {
     formatTableCell(val, isPercent, isYear = false) {
         if (val === null || isNaN(val)) return `<td>—</td>`;
         const cls = val > 0 ? 'cell-up' : (val < 0 ? 'cell-down' : 'cell-neutral');
-        const sign = (isPercent && val > 0) ? '+' : '';
+        const sign = val > 0 ? '+' : (val < 0 ? '-' : '');
         const suffix = isPercent ? '%' : '';
         const formatted = Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const displayVal = (val < 0 ? '-' : sign) + formatted + suffix;
-        return `<td class="month-cell ${cls} ${isYear ? 'year-column' : ''}">${displayVal}</td>`;
+        const monthCellClass = isYear ? '' : 'month-cell';
+        return `<td class="${monthCellClass} ${cls}${isYear ? ' year-column' : ''}" style="color: #ffffff">${sign}${formatted}${suffix}</td>`;
     }
 
     initFullSeasonals() {
@@ -2035,7 +2379,6 @@ export class SidebarController {
 
         const sliderMin = this.seasonalSliderMin;
         const sliderMax = this.seasonalSliderMax;
-        const totalYears = (sliderMax - sliderMin) || 1;
 
         // Dynamically update Year Labels on the track
         const labelsContainer = document.querySelector('.slider-years-labels');
@@ -2055,11 +2398,15 @@ export class SidebarController {
 
         const updateUI = () => {
             if (!this.currentStartYear || !this.currentEndYear) return;
+            const currentMin = this.seasonalSliderMin;
+            const currentMax = this.seasonalSliderMax;
+            const total = (currentMax - currentMin) || 1;
+
             const startYear = Math.min(this.currentStartYear, this.currentEndYear);
             const endYear = Math.max(this.currentStartYear, this.currentEndYear);
 
-            const sPerc = ((this.currentStartYear - sliderMin) / totalYears) * 100;
-            const ePerc = ((this.currentEndYear - sliderMin) / totalYears) * 100;
+            const sPerc = ((this.currentStartYear - currentMin) / total) * 100;
+            const ePerc = ((this.currentEndYear - currentMin) / total) * 100;
 
             thumbStart.style.left = `${sPerc}%`;
             thumbEnd.style.left = `${ePerc}%`;
@@ -2091,7 +2438,10 @@ export class SidebarController {
             let perc = (e.clientX - rect.left) / rect.width;
             perc = Math.max(0, Math.min(1, perc));
 
-            const year = Math.round(sliderMin + perc * totalYears);
+            const currentMin = this.seasonalSliderMin;
+            const currentMax = this.seasonalSliderMax;
+            const total = (currentMax - currentMin) || 1;
+            const year = Math.round(currentMin + perc * total);
 
             if (isStart) {
                 this.currentStartYear = year;
@@ -2164,109 +2514,45 @@ export class SidebarController {
         // Initial UI Sync
         updateUI();
 
-        // Hover logic (One-time setup)
         const tooltip = document.getElementById('seasonals-full-tooltip');
-        const width = 1000;
-        const height = 600;
-        const paddingRight = 80;
-        const paddingTop = 5;
-        const paddingBottom = 150;
+        const container = document.getElementById('seasonals-full-chart');
+        
+        if (this.isFullSeasonalsHoverSetup) return;
+        this.isFullSeasonalsHoverSetup = true;
+
+        if (tooltip) tooltip.style.pointerEvents = 'none';
+
+        // Smooth resize handling (Settled-only)
+        // Transition is handled smoothly by CSS (width: 100%)
+        // High-quality render is triggered in toggleSidebar after settle
 
         svg.addEventListener('mousemove', (e) => {
             if (!this.fullSeasonalsResults) return;
             const rect = svg.getBoundingClientRect();
-            const relX = ((e.clientX - rect.left) / rect.width) * width;
+            // Use real pixel width and dynamic padding (matched to render)
+            const pLeft = 50; 
+            const pRight = 100;
+            const curWidth = rect.width;
 
-            let day = Math.round((relX / (width - paddingRight)) * 365);
-            day = Math.max(0, Math.min(365, day));
+            const relX = (e.clientX - rect.left);
+            
+            // Map relX to day (0-366) respecting padding
+            const usableWidth = curWidth - pLeft - pRight;
+            let day = Math.round(((relX - pLeft) / usableWidth) * 366);
+            day = Math.max(0, Math.min(366, day));
 
-            let tooltipHtml = `<div style="font-weight:700;margin-bottom:6px;border-bottom:1px solid #363c4e;padding-bottom:6px">Day ${day}</div>`;
-            let hasData = false;
-
-            const valProp = this.seasonalViewMode || 'percentage';
-            const isPercent = valProp === 'percentage';
-
-            // Sort years for tooltip
-            Object.keys(this.fullSeasonalsResults)
-                .filter(y => y >= Math.min(this.currentStartYear, this.currentEndYear) && y <= Math.max(this.currentStartYear, this.currentEndYear))
-                .sort((a, b) => b - a).forEach(year => {
-                    const yearData = this.fullSeasonalsResults[year].data;
-                    const point = yearData.find(pt => pt.day === day) ||
-                        [...yearData].reverse().find(pt => pt.day <= day);
-
-                    if (point) {
-                        const val = (point[valProp] !== undefined) ? point[valProp] : (point.val || 0);
-                        const color = this.fullSeasonalsResults[year].color;
-                        const valStr = isPercent ? (val >= 0 ? '+' : '') + val.toFixed(2) + '%' : val.toFixed(2);
-                        tooltipHtml += `
-                        <div class="tooltip-row" style="margin: 4px 0">
-                            <span style="color:${color};font-weight:700">${year}</span>
-                            <span class="${val >= 0 ? 'change-up' : 'change-down'}">${valStr}</span>
-                        </div>
-                    `;
-                        hasData = true;
-                    }
-                });
-
-            // Add Average to tooltip if enabled
-            if (this.showSeasonalAverage) {
-                let sum = 0;
-                let count = 0;
-                Object.values(this.fullSeasonalsResults).forEach(obj => {
-                    const pt = obj.data.find(p => p.day === day) || [...obj.data].reverse().find(p => p.day <= day);
-                    if (pt) {
-                        const v = (pt[valProp] !== undefined) ? pt[valProp] : (pt.val || 0);
-                        sum += v;
-                        count++;
-                    }
-                });
-                if (count > 0) {
-                    const avg = sum / count;
-                    const avgStr = isPercent ? (avg >= 0 ? '+' : '') + avg.toFixed(2) + '%' : avg.toFixed(2);
-                    tooltipHtml += `
-                        <div class="tooltip-row" style="margin: 4px 0; border-top: 1px solid #363c4e; padding-top: 4px">
-                            <span style="color:#ffffff;font-weight:700">AVERAGE</span>
-                            <span class="${avg >= 0 ? 'change-up' : 'change-down'}">${avgStr}</span>
-                        </div>
-                    `;
-                }
-            }
-
-            if (hasData) {
-                tooltip.innerHTML = tooltipHtml;
-                tooltip.style.display = 'block';
-
-                const tooltipRect = tooltip.getBoundingClientRect();
-                let x = e.clientX - rect.left + 20;
-                let y = e.clientY - rect.top + 20;
-
-                if (x + tooltipRect.width > rect.width) x -= (tooltipRect.width + 40);
-                if (y + tooltipRect.height > rect.height) y -= (tooltipRect.height + 40);
-
-                tooltip.style.left = `${x}px`;
-                tooltip.style.top = `${y}px`;
-
-                let hoverLine = svg.querySelector('.seasonal-full-hover-line');
-                if (!hoverLine) {
-                    hoverLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                    hoverLine.setAttribute("class", "seasonal-full-hover-line");
-                    hoverLine.setAttribute("stroke", "#787b86");
-                    hoverLine.setAttribute("stroke-width", "1");
-                    hoverLine.setAttribute("stroke-dasharray", "4 4");
-                    svg.appendChild(hoverLine);
-                }
-                const lx = (day / 365) * (width - paddingRight);
-                hoverLine.setAttribute("x1", lx);
-                hoverLine.setAttribute("y1", paddingTop);
-                hoverLine.setAttribute("x2", lx);
-                hoverLine.setAttribute("y2", height - paddingBottom);
-            }
+            this.fullHoverDay = day;
+            this.fullHoverPos = { clientX: e.clientX, clientY: e.clientY };
+            this.refreshSeasonalHover(false);
         });
 
         svg.addEventListener('mouseleave', () => {
+            this.fullHoverDay = null;
+            this.fullHoverPos = null;
             if (tooltip) tooltip.style.display = 'none';
-            const hoverLine = svg.querySelector('.seasonal-full-hover-line');
-            if (hoverLine) hoverLine.remove();
+            const hLine = svg.querySelector('.seasonal-full-hover-line');
+            if (hLine) hLine.remove();
+            svg.querySelectorAll('.seasonal-hover-dot').forEach(d => d.remove());
         });
 
         this.fullSeasonalsInitialized = true;
@@ -2274,6 +2560,21 @@ export class SidebarController {
 
     setupFullSeasonalsHover(results) {
         // Obsolete - moved to initFullSeasonals
+    }
+
+    getContrastColor(hex) {
+        if (!hex) return '#ffffff';
+        // Clean the hex string
+        const color = hex.replace('#', '');
+        const r = parseInt(color.substring(0, 2), 16);
+        const g = parseInt(color.substring(2, 4), 16);
+        const b = parseInt(color.substring(4, 6), 16);
+        
+        // Calculate YIQ brightness (Industry standard formula)
+        const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        
+        // If brightness is > 150 (light color), use dark text, else white
+        return (yiq >= 150) ? '#131722' : '#ffffff';
     }
 
     hexToRgb(hex) {
@@ -2352,8 +2653,20 @@ export class SidebarController {
         // because its container (#chart-container) changes width due to CSS transition.
         // We just keep a small timeout to ensure the final layout is captured perfectly.
         if (window.chart) {
+            const seasonalFull = document.getElementById('seasonals-view-container');
+            const fullSvg = document.getElementById('seasonals-full-svg');
+            if (fullSvg && seasonalFull && seasonalFull.style.display !== 'none') {
+                fullSvg.setAttribute('preserveAspectRatio', 'none');
+            }
+
             setTimeout(() => {
                 if (window.chart) window.chart.resize(null, null, true, true);
+                
+                // Also trigger full seasonal chart re-render if it's active
+                const seasonalFull = document.getElementById('seasonals-view-container');
+                if (seasonalFull && seasonalFull.style.display !== 'none' && this.fullSeasonalsResults) {
+                    this.renderFullSeasonalsChart(this.fullSeasonalsResults, this.currentStartYear, this.currentEndYear);
+                }
             }, 350); // 300ms transition + buffer
         }
     }
@@ -2390,87 +2703,220 @@ export class SidebarController {
 
         const container = chartView;
         const svg = document.getElementById('seasonals-full-svg');
+        const labelsCol = document.getElementById('seasonals-full-labels');
+        if (!container || !svg || !labelsCol) {
+            console.error("Export failed: Required elements missing", { container, svg, labelsCol });
+            alert("Export failed: Required chart elements not found.");
+            return;
+        }
 
         // Visual feedback
         const originalCursor = document.body.style.cursor;
         document.body.style.cursor = 'wait';
         try {
-            const isChartVisible = container.offsetParent !== null;
-            if (!isChartVisible) {
-                alert("Please switch to Chart View before exporting.");
-                return;
-            }
+            // FIX: IMMUTABLE 16:9 ULTRA-HIFI RESOLUTION (2560x1440)
+            const targetWidth = 2560; // 1440p / 2K Standard (Highest Quality)
+            const targetHeight = 1440;
 
-            // Capture current state to restore later
-            const originalWidth = container.style.width;
-            const originalHeight = container.style.height;
-            const originalFlex = container.style.flex;
+            // Proportional Scaling Factor (Original was ~1000px, now 2560px)
+            const s = targetWidth / 1000; 
 
-            // Use a professional FIXED high-resolution for the export to ensure consistency 
-            // (1000x550 gives a tight, professional chart aesthetic)
-            const targetWidth = 1000;
-            const targetHeight = 550;
+            // Generate SVG string specifically for this resolution without touching live DOM
+            await this.renderFullSeasonalsChart(
+                this.fullSeasonalsResults, 
+                this.currentStartYear, 
+                this.currentEndYear, 
+                targetWidth, 
+                targetHeight
+            );
 
-            // Temporarily resize to target dimensions for clean rendering
-            container.style.flex = 'none';
-            container.style.width = `${targetWidth}px`;
-            container.style.height = `${targetHeight}px`;
+            // Give browser a micro-moment to parse the newly set innerHTML
+            await new Promise(resolve => requestAnimationFrame(resolve));
 
-            // Force a re-render at this specific size
-            await this.renderFullSeasonalsChart();
-
-            // Critical: Wait for browser to recalculate layout/rects
-            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-            // Dimensions for canvas
-            const padding = 24;
-            const headerHeight = 60;
-            const bottomPadding = 24;
-
-            const canvasWidth = targetWidth + padding * 2;
-            const canvasHeight = targetHeight + headerHeight + padding + bottomPadding;
+            // Dimensions for canvas (Professional 16:9 frame - SCALED)
+            const padding = 25 * s; // Proportional padding
+            const headerHeight = 55 * s; 
+            const bottomPadding = 20 * s; 
 
             const canvas = document.createElement('canvas');
             const dpr = window.devicePixelRatio || 2;
+            const ctx = canvas.getContext('2d');
+
+            // 1. Calculate Maximum Label Width for Dynamic Framing
+            ctx.font = `bold ${Math.round(11 * s)}px Arial`;
+            let maxLabelWidth = 0;
+            this.selectedYears.forEach(yearNum => {
+                const year = yearNum.toString();
+                const yrData = this.fullSeasonalsResults[year];
+                if (!yrData) return;
+                const lastPoint = yrData.data[yrData.data.length - 1];
+                const lastVal = lastPoint[this.seasonalViewMode || 'percentage'];
+                const yearPct = lastVal.toFixed(1) + '%';
+                const textWidth = ctx.measureText(`${year} (${yearPct})`).width;
+                maxLabelWidth = Math.max(maxLabelWidth, textWidth + (12 * s));
+            });
+
+            // Adjust canvas width dynamically to wrap perfectly around the longest label
+            const pRight = this._lastFullSeasonalsPaddingRight || 80;
+            const pTop = this._lastFullSeasonalsPaddingTop || 20;
+            const pBot = this._lastFullSeasonalsPaddingBottom || 60;
+
+            // The label starts at relX + padding. relX = targetWidth - pRight - 10.
+            // So we want: padding + (targetWidth - pRight - 10) + maxLabelWidth + safetyGap
+            const canvasWidth = padding + (targetWidth - pRight - 10) + maxLabelWidth + (15 * s);
+            const canvasHeight = targetHeight + headerHeight + (padding * 2) + bottomPadding;
+            
             canvas.width = canvasWidth * dpr;
             canvas.height = canvasHeight * dpr;
-            const ctx = canvas.getContext('2d');
-            ctx.scale(dpr, dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // Reset scale after resizing
 
-            // 1. Draw Overall Background
+            // Redraw Overall Background (PURE BLACK as requested)
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
             ctx.fillStyle = '#000000';
             ctx.fillRect(padding, padding + headerHeight, targetWidth, targetHeight);
 
-            // 2. Draw Title Header Area
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 17px Arial'; // Not too big as requested
-            ctx.textAlign = 'left';
-
-            // Get accurate metadata from DOM
+            // Construct title with exchange info 
             const ticker = document.getElementById('detail-symbol')?.textContent || this.currentTicker || 'BTC/USDT';
             const exchangeName = document.getElementById('detail-exchange')?.textContent || '';
+            const title = `${ticker}${exchangeName ? ' • ' + exchangeName : ''}`;
 
-            ctx.fillText(`${ticker}${exchangeName ? ' • ' + exchangeName : ''}`, padding + 10, padding + 22);
+            // Fetch and Load Token Icon - REFINED SYMBOL EXTRACTION
+            let logoImg = null;
+            try {
+                // Strip slashes and suffixes to get clean asset symbol (e.g. BTC/USDT -> BTC)
+                let cleanSymbol = ticker.split(/[/\-:_]/)[0].replace('.P', '');
+                const logoUrl = getTickerLogo(cleanSymbol, window.chart?.currency || '', this.currentMarket || 'crypto');
+                
+                logoImg = new Image();
+                logoImg.crossOrigin = 'anonymous'; // Critical for canvas drawing
+                await new Promise((resolve) => {
+                    logoImg.onload = resolve;
+                    logoImg.onerror = () => { logoImg = null; resolve(); }; // Graceful fallback
+                    logoImg.src = logoUrl;
+                });
+            } catch (err) { logoImg = null; }
 
+            // 1. Draw Styled Logo Box (Left)
+            let headerTextX = padding + (10 * s);
+            const logoBoxSize = 38 * s;
+            const logoPadding = 4 * s;
+            const titleY = padding + (24 * s); 
+
+            if (logoImg) {
+                // Draw white background CIRCLE (border effect)
+                ctx.fillStyle = '#ffffff';
+                const centerX = headerTextX + (logoBoxSize / 2);
+                const centerY = padding + (5 * s) + (logoBoxSize / 2);
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, logoBoxSize / 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw icon inside
+                ctx.drawImage(logoImg, headerTextX + logoPadding, padding + (5 * s) + logoPadding, logoBoxSize - (logoPadding * 2), logoBoxSize - (logoPadding * 2));
+                
+                headerTextX += logoBoxSize + (12 * s);
+            }
+
+            // 2. Draw Ticker Title (Right of logo)
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${Math.round(20 * s)}px Arial`;
+            ctx.textAlign = 'left';
+            ctx.fillText(title, headerTextX, titleY);
+
+            // 3. Draw Year Range (Right of logo, below ticker)
             ctx.fillStyle = '#787b86';
-            ctx.font = '12px Arial';
-            // Construct year range text (Support single year case)
+            ctx.font = `${Math.round(13 * s)}px Arial`;
             let yearRangeStr = '';
             if (this.selectedYears && this.selectedYears.length > 0) {
                 const minYear = Math.min(...this.selectedYears);
                 const maxYear = Math.max(...this.selectedYears);
-                if (minYear === maxYear) {
-                    yearRangeStr = `${minYear}`; // Single year
-                } else {
-                    yearRangeStr = `${this.selectedYears.length} Years (${minYear} - ${maxYear})`;
-                }
+                yearRangeStr = (minYear === maxYear) ? `${minYear}` : `${this.selectedYears.length} Years (${minYear} - ${maxYear})`;
             }
-            ctx.fillText(yearRangeStr, padding + 10, padding + 40);
+            ctx.fillText(yearRangeStr, headerTextX, titleY + (20 * s));
 
             // 3. Draw SVG (Drawing SVG BEFORE labels so it acts as background)
             const svgClone = svg.cloneNode(true);
+            
+            // Boost line brightness/thickness for 1440p resolution - REFINED
+            svgClone.querySelectorAll('.seasonal-path, path').forEach(p => {
+                const currentWidth = parseFloat(p.getAttribute('stroke-width')) || 1.2;
+                // Slightly reduced from 1.2 to 0.5 to keep lines elegant
+                p.setAttribute('stroke-width', (currentWidth + 0.5) * s);
+                
+                // User requested: Dashed lines (for future & average) must be dramatically THICKER 
+                const dash = p.getAttribute('stroke-dasharray');
+                if (dash && dash !== 'none') {
+                    // Significantly higher base for modern, heavy-duty dashed lines at 1440p
+                    p.setAttribute('stroke-width', (currentWidth + 3.0) * s * 1.2); 
+                    
+                    // Expand gaps even more to match the new heavy thickness
+                    const scaledDash = dash.split(/[\s,]+/)
+                                           .map(v => (v.trim() ? parseFloat(v) * s * 3.5 : 0))
+                                           .join(' ');
+                    p.setAttribute('stroke-dasharray', scaledDash);
+                    p.setAttribute('opacity', '1.0');
+                }
+            });
+
+            // Scale Pulse Dot (if exists) and Match Color - BEEFED UP FOR 1440p
+            svgClone.querySelectorAll('circle').forEach(c => {
+                const r = parseFloat(c.getAttribute('r')) || 0;
+                if (r > 0) {
+                    // Standard is r=4, we want it significantly larger for 1440p
+                    c.setAttribute('r', r * s * 1.5); 
+                    const sw = parseFloat(c.getAttribute('stroke-width')) || 0;
+                    c.setAttribute('stroke-width', (sw || 1) * s * 1.5);
+                    
+                    // Force 100% visibility for export
+                    c.setAttribute('opacity', '1.0');
+                }
+            });
+
+            // Scale all other line children (connectors, grid, etc.)
+            svgClone.querySelectorAll('line').forEach(l => {
+                const x1 = l.getAttribute('x1');
+                const x2 = l.getAttribute('x2');
+                const y1 = l.getAttribute('y1');
+                const y2 = l.getAttribute('y2');
+                
+                // User requested: No HORIZONTAL grid (y1 === y2)
+                // BUT we must keep horizontal DASHED lines (connectors or projections)
+                const isDashed = l.getAttribute('stroke-dasharray');
+                if (y1 === y2 && x1 !== x2 && !isDashed) {
+                    // These are strictly solid horizontal grid lines - remove per request
+                    l.remove();
+                    return;
+                }
+
+                // If it's a connector line (identified by opacity < 1 or stroke-dasharray)
+                const dash = l.getAttribute('stroke-dasharray');
+                if (dash && dash !== 'none') {
+                    // Connectors should also be significantly thicker for 1440p clarity
+                    l.setAttribute('stroke-width', (parseFloat(l.getAttribute('stroke-width')) || 0.7) * s * 2.5);
+                    const scaledDash = dash.split(/[\s,]+/)
+                                           .map(v => (v.trim() ? parseFloat(v) * s * 2.5 : 0))
+                                           .join(' ');
+                    l.setAttribute('stroke-dasharray', scaledDash);
+                    // Match subtle projection opacity
+                    l.setAttribute('opacity', '0.7'); 
+                } else {
+                    // This covers the Vertical Grid Lines (X-axis dividers)
+                    const str = l.getAttribute('stroke');
+                    if (str === '#2a2e39' || str === '#363c4e' || str === '#444b5e') {
+                        l.setAttribute('stroke', '#444b5e'); 
+                        l.setAttribute('opacity', '1.0');    
+                        l.setAttribute('stroke-width', 0.8 * s); 
+                    }
+                }
+            });
+
+            // User requested: No hover dots or hover lines in export
+            svgClone.querySelectorAll('#seasonal-hover-line, .seasonal-hover-dot').forEach(el => el.remove());
+
+            // Remove all SVG text before drawing to canvas (prevents doubled text)
+            svgClone.querySelectorAll('text').forEach(t => t.remove());
+
             svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
             svgClone.setAttribute('width', targetWidth);
             svgClone.setAttribute('height', targetHeight);
@@ -2492,51 +2938,91 @@ export class SidebarController {
             // 4. Draw All Labels (Ticks + Year Tags) - ON TOP
             const containerRect = container.getBoundingClientRect();
 
-            // 4a. Draw Tick Labels
-            ctx.fillStyle = '#787b86';
-            ctx.font = '10px Arial';
-            ctx.textAlign = 'right';
-            const tickSpans = Array.from(labelsCol.querySelectorAll('span')).filter(s => !s.closest('.year-tag'));
-            tickSpans.forEach(span => {
-                const r = span.getBoundingClientRect();
-                const relY = r.top - containerRect.top + (r.height / 2);
-                const relX = r.right - containerRect.left;
-                ctx.fillText(span.textContent, relX + padding - 5, relY + padding + headerHeight + 4);
+            // 4a. Draw Tick Labels (Ruler Scale) - OPTIMIZED SIZE
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${Math.round(13 * s)}px Arial`; 
+            ctx.textAlign = 'left';
+            const tickLabels = Array.from(svg.querySelectorAll('text')).filter(t => t.textContent.includes('%'));
+            tickLabels.forEach(txt => {
+                const x = parseFloat(txt.getAttribute('x'));
+                const y = parseFloat(txt.getAttribute('y'));
+                // User requested: Add a small gap between text and chart edge
+                ctx.fillText(txt.textContent, x + padding + (10 * s), y + padding + headerHeight);
             });
 
-            // 4b. Draw Year Tags - INLINE
-            const yearTags = labelsCol.querySelectorAll('.year-tag');
-            yearTags.forEach(tag => {
-                const r = tag.getBoundingClientRect();
-                const relY = r.top - containerRect.top;
-                const relX = r.left - containerRect.left;
+            // 4b. Draw Month Labels - OPTIMIZED SIZE + TOP PADDING + CENTERED
+            ctx.font = `bold ${Math.round(12 * s)}px Arial`;
+            ctx.textAlign = 'center'; // User requested: Perfect horizontal center
+            const monthLabels = Array.from(svg.querySelectorAll('text')).filter(t => t.getAttribute('text-anchor') === 'middle');
+            monthLabels.forEach(txt => {
+                const x = parseFloat(txt.getAttribute('x'));
+                const y = parseFloat(txt.getAttribute('y'));
+                // Add 10px * s extra top padding to separate from chart area
+                ctx.fillText(txt.textContent, x + padding, y + padding + headerHeight + (10 * s));
+            });
 
-                const bgColor = window.getComputedStyle(tag).backgroundColor;
-                ctx.fillStyle = bgColor;
+            // 4c. Draw Year Tags - PIXEL PERFECT MATHEMATICAL ALIGNMENT
+            const rMin = this._lastFullSeasonalsMin || 0;
+            const rRange = this._lastFullSeasonalsRange || 1;
 
-                // Draw rounded background box (adjusted width for inline text)
-                const spans = tag.querySelectorAll('span');
-                const yearNum = spans[0]?.textContent || '';
-                const yearPct = spans[1]?.textContent || '';
-                const combinedText = `${yearNum} (${yearPct})`;
+            const getYForVal = (val) => {
+                const rangeH = targetHeight - pTop - pBot;
+                return (targetHeight - pBot) - (((val - rMin) / (rRange || 1)) * rangeH);
+            };
 
-                // Measure text to decide box width
-                ctx.font = 'bold 11px Arial';
+            // Only draw years that were selected/rendered
+            this.selectedYears.forEach(yearNum => {
+                const year = yearNum.toString();
+                const yrData = this.fullSeasonalsResults[year];
+                if (!yrData) return;
+                
+                const lastPoint = yrData.data[yrData.data.length - 1];
+                const lastVal = lastPoint[this.seasonalViewMode || 'percentage'];
+                const color = yrData.color;
+
+                const relY = getYForVal(lastVal);
+                // Important: Match the 10px gap from renderFullSeasonalsChart 
+                // so the label touches the connector exactly.
+                const relX = targetWidth - pRight - 10; 
+
+                const yearPct = (lastVal >= 0 ? '' : '') + lastVal.toFixed(1) + '%';
+                const combinedText = `${year} (${yearPct})`;
+
+                ctx.font = `bold ${Math.round(11 * s)}px Arial`;
                 const textWidth = ctx.measureText(combinedText).width;
-                const boxWidth = textWidth + 12;
+                const boxWidth = textWidth + (12 * s);
+                const boxHeight = 18 * s;
 
-                this.drawRoundedRect(ctx, relX + padding, relY + padding + headerHeight, boxWidth, 18, 4);
+                // Draw background box exactly at the end of the line/connector
+                ctx.fillStyle = color;
+                // Center the box vertically on relY (-9*s offset for 18*s height)
+                const boxY = relY + padding + headerHeight - (9 * s);
+                this.drawRoundedRect(ctx, relX + padding, boxY, boxWidth, boxHeight, 4 * s);
 
-                // Draw text inside the tag (Inline)
-                ctx.fillStyle = (bgColor === 'rgb(255, 255, 255)' || bgColor === 'white') ? '#000000' : '#ffffff';
+                // Helper to determine adaptive text color (Luminance check)
+                const getContrastColor = (hex) => {
+                    if (!hex || hex === 'transparent') return '#ffffff';
+                    let r, g, b;
+                    if (hex.startsWith('rgb')) {
+                        [r, g, b] = hex.match(/\d+/g).map(Number);
+                    } else if (hex.startsWith('#')) {
+                        r = parseInt(hex.slice(1, 3), 16);
+                        g = parseInt(hex.slice(3, 5), 16);
+                        b = parseInt(hex.slice(5, 7), 16);
+                    } else return '#ffffff';
+                    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                    return luminance > 0.5 ? '#000000' : '#ffffff';
+                };
+
+                // Draw text inside the tag
+                ctx.fillStyle = getContrastColor(color);
                 ctx.textAlign = 'left';
-                ctx.fillText(combinedText, relX + padding + 6, relY + padding + headerHeight + 13);
+                ctx.textBaseline = 'middle'; // Perfect vertical centering
+                ctx.fillText(combinedText, relX + padding + (6 * s), boxY + (boxHeight / 2) + (1 * s));
+                ctx.textBaseline = 'alphabetic'; // Reset
             });
 
-            // 5. Restore original view
-            container.style.flex = originalFlex;
-            container.style.width = originalWidth;
-            container.style.height = originalHeight;
+            // 5. Cleanup (Restore original UI view at current window size)
             await this.renderFullSeasonalsChart();
 
             // 6. Output Result
@@ -2549,15 +3035,17 @@ export class SidebarController {
                 link.click();
                 document.body.removeChild(link);
             } else if (mode === 'copy') {
-                canvas.toBlob(async (blob) => {
-                    try {
-                        const data = [new ClipboardItem({ 'image/png': blob })];
-                        await navigator.clipboard.write(data);
-                        alert("Image copied to clipboard!");
-                    } catch (err) {
-                        alert("Could not copy image. Try downloading.");
-                    }
-                }, 'image/png');
+                try {
+                    // Modern Promise-based ClipboardItem avoids "NotAllowedError" 
+                    // by keeping the "User Activation" context active during generation.
+                    const blobPromise = new Promise(resolve => canvas.toBlob(resolve, 'image/png', 1.0));
+                    const data = [new ClipboardItem({ 'image/png': blobPromise })];
+                    await navigator.clipboard.write(data);
+                    alert("Image copied to clipboard!");
+                } catch (err) {
+                    console.error("Clipboard Copy failed:", err);
+                    alert("Could not copy image. Try downloading.");
+                }
             }
         } catch (err) {
             console.error("Export failed:", err);
@@ -2603,20 +3091,23 @@ export class SidebarController {
                 tableData.push(row);
             });
 
-            // 2. Dimensions and Canvas setup
-            const padding = 24;
-            const headerHeight = 60;
-            const rowHeight = 30;
-            const dateColWidth = 40;
-            const monthColWidth = 65;
-            const yearColWidth = 75;
+            // 2. Dimensions and Canvas setup - UPGRADED TO HIGH-FIFI SCALING
+            const targetTableWidth = 900; // Baseline width for scaling
+            const s = targetTableWidth / 900; // Unity scaling for now, but enables easy HD upgrades
+            
+            const padding = 25 * s;
+            const headerHeight = 65 * s;
+            const rowHeight = 30 * s;
+            const dateColWidth = 45 * s;
+            const monthColWidth = 65 * s;
+            const yearColWidth = 75 * s;
 
             const tableWidth = dateColWidth + (monthColWidth * 12) + yearColWidth;
-            const rowTotal = tableData.length + 1 + (this.showSeasonalAverage ? 1 : 0) + 1; // Headers + Data + Avg + Rise/Fall
+            const rowTotal = tableData.length + 1 + (this.showSeasonalAverage ? 1 : 0) + 1;
             const tableHeight = rowTotal * rowHeight;
 
             const canvasWidth = tableWidth + padding * 2;
-            const canvasHeight = tableHeight + headerHeight + padding + 24;
+            const canvasHeight = tableHeight + headerHeight + padding + (24 * s);
 
             const canvas = document.createElement('canvas');
             const dpr = window.devicePixelRatio || 2;
@@ -2625,24 +3116,58 @@ export class SidebarController {
             const ctx = canvas.getContext('2d');
             ctx.scale(dpr, dpr);
 
-            // 3. Draw Background
+            // 3. Draw Background (PURE BLACK)
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-            // 4. Draw Header
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 17px Arial';
-            ctx.textAlign = 'left';
+            // 4. Draw Premium Branded Header
             const ticker = document.getElementById('detail-symbol')?.textContent || this.currentTicker || 'BTC/USDT';
-            const exchange = document.getElementById('detail-exchange')?.textContent || '';
-            ctx.fillText(`${ticker}${exchange ? ' • ' + exchange : ''}`, padding + 10, padding + 22);
+            const exchangeName = document.getElementById('detail-exchange')?.textContent || '';
+            const title = `${ticker}${exchangeName ? ' • ' + exchangeName : ''}`;
+
+            // Fetch and Load Token Icon (Sync with Chart logic)
+            let logoImg = null;
+            try {
+                let cleanSymbol = ticker.split(/[/\-:_]/)[0].replace('.P', '');
+                const logoUrl = getTickerLogo(cleanSymbol, window.chart?.currency || '', this.currentMarket || 'crypto');
+                logoImg = new Image();
+                logoImg.crossOrigin = 'anonymous';
+                await new Promise((resolve) => {
+                    logoImg.onload = resolve;
+                    logoImg.onerror = () => { logoImg = null; resolve(); };
+                    logoImg.src = logoUrl;
+                });
+            } catch (err) { logoImg = null; }
+
+            // 4a. Draw Styled Logo Box (Left)
+            let headerTextX = padding + (10 * s);
+            const logoBoxSize = 38 * s;
+            const logoPadding = 4 * s;
+            const titleY = padding + (24 * s); 
+
+            if (logoImg) {
+                ctx.fillStyle = '#ffffff';
+                const centerX = headerTextX + (logoBoxSize / 2);
+                const centerY = padding + (5 * s) + (logoBoxSize / 2);
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, logoBoxSize / 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.drawImage(logoImg, headerTextX + logoPadding, padding + (5 * s) + logoPadding, logoBoxSize - (logoPadding * 2), logoBoxSize - (logoPadding * 2));
+                headerTextX += logoBoxSize + (12 * s);
+            }
+
+            // 4b. Draw Titles (Right of Logo)
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${Math.round(20 * s)}px Arial`;
+            ctx.textAlign = 'left';
+            ctx.fillText(title, headerTextX, titleY);
 
             ctx.fillStyle = '#787b86';
-            ctx.font = '12px Arial';
+            ctx.font = `${Math.round(13 * s)}px Arial`;
             const minYear = Math.min(...years);
             const maxYear = Math.max(...years);
-            const yearRange = minYear === maxYear ? `${minYear}` : `${years.length} Years (${minYear} - ${maxYear})`;
-            ctx.fillText(yearRange, padding + 10, padding + 40);
+            const yearRangeStr = minYear === maxYear ? `${minYear}` : `${years.length} Years (${minYear} - ${maxYear})`;
+            ctx.fillText(yearRangeStr, headerTextX, titleY + (20 * s));
 
             // 5. Draw Table Header
             let curY = padding + headerHeight;

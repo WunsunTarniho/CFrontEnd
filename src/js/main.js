@@ -29,6 +29,7 @@ import {
     setChartModeActive,
     setSearchTicker,
     getTickerLogo,
+    getExchangeLogo,
     extractSymbol
 } from './utils.js';
 
@@ -216,7 +217,12 @@ function setupSearchModal() {
                     </div>
                     <div class="search-exchange-group">
                         <span class="search-exchange-name">${exch}</span>
-                        <div class="search-exchange-logo"></div>
+                        <div class="search-exchange-logo">
+                            ${(() => {
+                                const exLogo = getExchangeLogo(exch, stock.mic_code);
+                                return exLogo ? `<img src="${exLogo}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">` : '';
+                            })()}
+                        </div>
                     </div>
                 </div>
             `;
@@ -293,7 +299,12 @@ function setupSearchModal() {
                     </div>
                     <div class="search-exchange-group">
                         <span class="search-exchange-name">${exch}</span>
-                        <div class="search-exchange-logo"></div>
+                        <div class="search-exchange-logo">
+                            ${(() => {
+                                const exLogo = getExchangeLogo(exch, stock.mic_code);
+                                return exLogo ? `<img src="${exLogo}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">` : '';
+                            })()}
+                        </div>
                     </div>
                 </div>
             `;

@@ -12,7 +12,7 @@ export class TableViewController {
         this.dateHeaderEl = document.getElementById('table-view-date-header');
         this.mainToolbar = document.querySelector('.side-toolbar');
         this.chartContainer = document.getElementById('chart-container');
-        
+
         this.init();
     }
 
@@ -20,7 +20,7 @@ export class TableViewController {
         if (!this.container || !this.closeBtn) return;
 
         this.closeBtn.addEventListener('click', () => this.hide());
-        
+
         this.scrollArea = this.container.querySelector('div[style*="overflow-y: auto"]');
         if (this.scrollArea) {
             this.scrollArea.addEventListener('scroll', () => {
@@ -52,12 +52,12 @@ export class TableViewController {
         const date = new Date(timestamp);
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        
+
         const dayName = days[date.getDay()];
         const dayNum = date.getDate().toString().padStart(2, '0');
         const monthName = months[date.getMonth()];
         const year = date.getFullYear().toString().slice(-2);
-        
+
         let output = `${dayName} ${dayNum} ${monthName} '${year}`;
 
         // Include time if timeframe is intraday
@@ -108,10 +108,10 @@ export class TableViewController {
 
         if (this.titleEl) this.titleEl.textContent = fullName;
         if (this.subtitleEl) this.subtitleEl.textContent = `${symbol} - ${exchange}`;
-        
+
         if (this.logoEl) {
             const logoUrl = getTickerLogo(symbol, this.chart.currency, market);
-                
+
             this.logoEl.innerHTML = `
                 <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
                 <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; color: #131722;">${symbol.charAt(0)}</div>
@@ -124,7 +124,7 @@ export class TableViewController {
     hide() {
         // Hide table, revealing chart elements underneath
         this.container.style.display = 'none';
-        
+
         // Restore left toolbar
         if (this.mainToolbar) this.mainToolbar.style.display = 'flex';
 
@@ -155,11 +155,11 @@ export class TableViewController {
         if (!this.sortedData) return;
 
         const endIndex = Math.min(startIndex + count, this.sortedData.length);
-        
+
         for (let index = startIndex; index < endIndex; index++) {
             const candle = this.sortedData[index];
             const prevCandle = this.sortedData[index + 1];
-            
+
             let changeVal = 0;
             let changePct = 0;
 
@@ -198,9 +198,9 @@ export class TableViewController {
 
     updateRealtimeRow(data) {
         if (!this.tbody || !data || data.length === 0) return;
-        
+
         // The newest candle is always at the end of the data array
-        const newest = data[data.length - 1]; 
+        const newest = data[data.length - 1];
         const prevCandle = data.length > 1 ? data[data.length - 2] : null;
 
         let changeVal = 0;
@@ -217,7 +217,7 @@ export class TableViewController {
         const formattedChange = `${sign}${this.formatNumber(changeVal)} (${sign}${changePct.toFixed(2)}%)`;
 
         const firstRow = this.tbody.firstElementChild;
-        
+
         if (firstRow && firstRow.dataset.timestamp == newest.timestamp) {
             // Update existing row
             firstRow.cells[1].textContent = this.formatNumber(newest.open);
@@ -234,7 +234,7 @@ export class TableViewController {
             tr.style.borderBottom = '1px solid #2a2e39';
             tr.onmouseover = () => tr.style.backgroundColor = '#1e222d';
             tr.onmouseout = () => tr.style.backgroundColor = 'transparent';
-            
+
             tr.innerHTML = `
                 <td style="padding: 12px 16px; text-align: left; color: #d1d4dc;">${this.formatDate(newest.timestamp)}</td>
                 <td style="padding: 12px 24px;">${this.formatNumber(newest.open)}</td>

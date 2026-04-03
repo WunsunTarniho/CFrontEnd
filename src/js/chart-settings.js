@@ -1,4 +1,5 @@
 import { AdvancedLineSetting } from './components/AdvancedLineSetting.js';
+import { updateClock } from './utils.js';
 
 export class ChartSettingsController {
     constructor(chart) {
@@ -8,6 +9,7 @@ export class ChartSettingsController {
         this.activeTab = 'symbol';
         this.advancedComponents = {};
         this.snapshot = null;
+        this.populateTimezones();
         this.init();
     }
 
@@ -366,10 +368,10 @@ export class ChartSettingsController {
             if (manualRow) manualRow.style.display = method === 'manual' ? 'flex' : 'none';
         });
         h('setting-footprint-atr-length', 'footprintAtrLength', false, true, () => {
-             this.chart.setInitialView();
+            this.chart.setInitialView();
         });
         h('setting-footprint-row-size-manual', 'footprintRowSizeManual', false, true, () => {
-             this.chart.setInitialView();
+            this.chart.setInitialView();
         });
         h('setting-footprint-type', 'footprintType', false, false, (val) => {
             const buySellColors = document.getElementById('setting-footprint-buy-sell-colors');
@@ -396,7 +398,7 @@ export class ChartSettingsController {
             this.chart.render();
         });
         hSmall('setting-footprint-poc-color', 'footprintPocColor');
-        
+
         h('setting-footprint-show-summary', 'footprintShowSummary', true, false, () => {
             this.chart.render();
         });
@@ -408,7 +410,7 @@ export class ChartSettingsController {
         });
         hSmall('setting-footprint-imbalance-up-color', 'footprintImbalanceUpColor');
         hSmall('setting-footprint-imbalance-down-color', 'footprintImbalanceDownColor');
-        
+
         h('setting-footprint-show-stacked-imbalance', 'footprintShowStackedImbalance', true, false, () => {
             this.chart.render();
         });
@@ -419,15 +421,15 @@ export class ChartSettingsController {
         // Background Gradients (Buy/Sell)
         for (let i = 1; i <= 4; i++) {
             hSmall(`setting-footprint-sell-bg-${i}`, null, (color) => {
-                this.chart.footprintSellBgColors[i-1] = color;
+                this.chart.footprintSellBgColors[i - 1] = color;
                 this.chart.render();
             });
             hSmall(`setting-footprint-buy-bg-${i}`, null, (color) => {
-                this.chart.footprintBuyBgColors[i-1] = color;
+                this.chart.footprintBuyBgColors[i - 1] = color;
                 this.chart.render();
             });
             hSmall(`setting-footprint-total-bg-${i}`, null, (color) => {
-                this.chart.footprintTotalBgColors[i-1] = color;
+                this.chart.footprintTotalBgColors[i - 1] = color;
                 this.chart.render();
             });
         }
@@ -450,7 +452,10 @@ export class ChartSettingsController {
 
         // Data Modification
         h('setting-precision', 'precision');
-        h('setting-timezone', 'timezone');
+        h('setting-timezone', 'timezone', false, false, () => {
+            updateClock();
+        });
+
 
         // Status Line
         h('setting-status-logo', 'showLegendLogo', true);
@@ -464,6 +469,68 @@ export class ChartSettingsController {
         h('setting-status-ind-titles', 'showLegendIndTitles', true);
         h('setting-status-ind-inputs', 'showLegendIndInputs', true);
         h('setting-status-ind-values', 'showLegendIndValues', true);
+    }
+
+    populateTimezones() {
+        const select = document.getElementById('setting-timezone');
+        if (!select) return;
+
+        // Clear existing hardcoded options
+        select.innerHTML = '';
+
+        // 1. Add Default/Local Option
+        const localOption = document.createElement('option');
+        localOption.value = 'Local';
+        localOption.textContent = 'Default (Device Time)';
+        select.appendChild(localOption);
+
+        // 2. Add all IANA timezones
+        try {
+            const timezones = Intl.supportedValuesOf('timeZone');
+            const now = new Date();
+
+            // Create a temporary list to sort by offset
+            const tzList = timezones.map(tz => {
+                try {
+                    const formatter = new Intl.DateTimeFormat('en-US', {
+                        timeZone: tz,
+                        timeZoneName: 'longOffset'
+                    });
+                    const parts = formatter.formatToParts(now);
+                    const offsetStr = parts.find(p => p.type === 'timeZoneName').value; // e.g. "GMT+07:00"
+                    const offsetLabel = offsetStr.replace('GMT', 'UTC');
+                    
+                    // Simple numeric offset for sorting (extract +07:00 -> 7)
+                    const sign = offsetStr.includes('-') ? -1 : 1;
+                    const match = offsetStr.match(/(\d+):(\d+)/);
+                    const numericOffset = match ? (parseInt(match[1]) + parseInt(match[2])/60) * sign : 0;
+
+                    return {
+                        value: tz,
+                        label: `(${offsetLabel}) ${tz.replace(/_/g, ' ')}`,
+                        offset: numericOffset
+                    };
+                } catch (e) { return null; }
+            }).filter(i => i !== null);
+
+            // Sort by offset
+            tzList.sort((a, b) => a.offset - b.offset);
+
+            // Add to select
+            tzList.forEach(tz => {
+                const opt = document.createElement('option');
+                opt.value = tz.value;
+                opt.textContent = tz.label;
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            // Fallback if Intl.supportedValuesOf is not supported
+            console.error("Timezone population failed:", e);
+            const opt = document.createElement('option');
+            opt.value = 'UTC';
+            opt.textContent = 'UTC';
+            select.appendChild(opt);
+        }
     }
 
     switchTab(tabId) {
@@ -539,7 +606,7 @@ export class ChartSettingsController {
         if (this.backdrop) {
             this.backdrop.style.display = 'none';
             this.chart.isSettingsOpen = false;
-            
+
             if (revert && this.snapshot) {
                 this.chart.applyChartState(this.snapshot);
                 this.chart.render(true);
@@ -738,7 +805,7 @@ export class ChartSettingsController {
         s('setting-footprint-apply-gradient', 'footprintApplyGradient', true);
         s('setting-footprint-value-area', 'footprintValueArea', true);
         s('setting-footprint-value-area-percent', 'footprintValueAreaPercent');
-        
+
         // NEW: Sync Labels & Imbalance
         s('setting-footprint-show-poc', 'footprintShowPOC', true);
         sAdvanced('setting-footprint-poc-color', { hexAlpha: this.chart.footprintPocColor });
@@ -755,7 +822,7 @@ export class ChartSettingsController {
         const fpManualRow = document.getElementById('setting-footprint-manual-row');
         if (fpAtrRow) fpAtrRow.style.display = fpMethod === 'atr' ? 'flex' : 'none';
         if (fpManualRow) fpManualRow.style.display = fpMethod === 'manual' ? 'flex' : 'none';
-        
+
         const buySellColors = document.getElementById('setting-footprint-buy-sell-colors');
         const totalColors = document.getElementById('setting-footprint-total-colors');
         if (buySellColors && totalColors) {
@@ -765,9 +832,9 @@ export class ChartSettingsController {
         }
 
         for (let i = 1; i <= 4; i++) {
-            sAdvanced(`setting-footprint-sell-bg-${i}`, { hexAlpha: this.chart.footprintSellBgColors[i-1] || '#000' });
-            sAdvanced(`setting-footprint-buy-bg-${i}`, { hexAlpha: this.chart.footprintBuyBgColors[i-1] || '#000' });
-            sAdvanced(`setting-footprint-total-bg-${i}`, { hexAlpha: this.chart.footprintTotalBgColors[i-1] || '#000' });
+            sAdvanced(`setting-footprint-sell-bg-${i}`, { hexAlpha: this.chart.footprintSellBgColors[i - 1] || '#000' });
+            sAdvanced(`setting-footprint-buy-bg-${i}`, { hexAlpha: this.chart.footprintBuyBgColors[i - 1] || '#000' });
+            sAdvanced(`setting-footprint-total-bg-${i}`, { hexAlpha: this.chart.footprintTotalBgColors[i - 1] || '#000' });
         }
 
         const renkoMethod = this.chart.renkoBoxSizeMethod;
@@ -818,7 +885,11 @@ export class ChartSettingsController {
 
         // Data Modification
         s('setting-precision', 'precision');
-        s('setting-timezone', 'timezone');
+        const tzSelect = document.getElementById('setting-timezone');
+        if (tzSelect) {
+            tzSelect.value = this.chart.timezone || 'Local';
+        }
+
 
         // Status Line
         s('setting-status-logo', 'showLegendLogo', true);
