@@ -1,5 +1,6 @@
 import { AdvancedLineSetting } from './components/AdvancedLineSetting.js';
 import { updateClock } from './utils.js';
+import { autoSaveLayoutViewState } from './data-service.js';
 
 export class ChartSettingsController {
     constructor(chart) {
@@ -67,7 +68,14 @@ export class ChartSettingsController {
                 }
 
                 if (callback) callback(val);
-                this.chart.isLayoutDirty = true;
+                
+                // NEW: Auto-save view state instead of manual dirty flag
+                if (window.autoSaveLayoutViewState) {
+                    window.autoSaveLayoutViewState();
+                } else if (autoSaveLayoutViewState) {
+                    autoSaveLayoutViewState();
+                }
+
                 this.chart.render(true);
             });
         };
@@ -91,7 +99,14 @@ export class ChartSettingsController {
                             }
                         }
                     });
-                    this.chart.isLayoutDirty = true;
+
+                    // NEW: Auto-save view state instead of manual dirty flag
+                    if (window.autoSaveLayoutViewState) {
+                        window.autoSaveLayoutViewState();
+                    } else if (autoSaveLayoutViewState) {
+                        autoSaveLayoutViewState();
+                    }
+
                     this.chart.render(true);
                 }
             });
@@ -114,7 +129,9 @@ export class ChartSettingsController {
                 const color2 = document.getElementById('setting-bg-advanced-2');
                 if (color2) color2.style.display = bgTypeEl.value === 'gradient' ? 'block' : 'none';
                 this.chart.backgroundType = bgTypeEl.value;
-                this.chart.isLayoutDirty = true;
+                
+                if (window.autoSaveLayoutViewState) window.autoSaveLayoutViewState();
+                
                 this.chart.render(true);
             });
         }
@@ -189,7 +206,9 @@ export class ChartSettingsController {
                     });
 
                     dropdown.classList.remove('show');
-                    this.chart.isLayoutDirty = true;
+                    
+                    if (window.autoSaveLayoutViewState) window.autoSaveLayoutViewState();
+                    
                     this.chart.render(true);
                 };
             });
@@ -1006,8 +1025,6 @@ export class ChartSettingsController {
 
         localStorage.setItem('chart_global_settings', JSON.stringify(settings));
         this.chart.render(true);
-        if (typeof window.saveCurrentLayout === 'function') {
-            window.saveCurrentLayout();
-        }
+        this.chart.isLayoutDirty = true;
     }
 }

@@ -1,4 +1,4 @@
-import { getTickerLogo } from "./utils.js";
+import { getTickerLogo, extractSymbol } from "./utils.js";
 
 export class TableViewController {
     constructor(chart) {
@@ -92,10 +92,9 @@ export class TableViewController {
         // Hide left toolbar to allow table to cover its area
         if (this.mainToolbar) this.mainToolbar.style.display = 'none';
 
-        // Hide chart legend if it exists
-        if (this.chart.legendOverlay) {
-            this.chart.legendOverlay.style.display = 'none';
-        }
+        // Hide chart legend and trading panel if they exist
+        if (this.chart.legendOverlay) this.chart.legendOverlay.style.display = 'none';
+        if (this.chart.tradingPanel) this.chart.tradingPanel.style.display = 'none';
 
         // Show table (overlays chart)
         this.container.style.display = 'flex';
@@ -110,7 +109,7 @@ export class TableViewController {
         if (this.subtitleEl) this.subtitleEl.textContent = `${symbol} - ${exchange}`;
 
         if (this.logoEl) {
-            const logoUrl = getTickerLogo(symbol, this.chart.currency, market);
+            const logoUrl = getTickerLogo(extractSymbol(symbol), market);
 
             this.logoEl.innerHTML = `
                 <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
@@ -128,10 +127,9 @@ export class TableViewController {
         // Restore left toolbar
         if (this.mainToolbar) this.mainToolbar.style.display = 'flex';
 
-        // Show chart legend back
-        if (this.chart.legendOverlay) {
-            this.chart.legendOverlay.style.display = 'flex';
-        }
+        // Restore chart legend and trading panel
+        if (this.chart.legendOverlay) this.chart.legendOverlay.style.display = 'flex';
+        if (this.chart.tradingPanel) this.chart.tradingPanel.style.display = 'flex';
     }
 
     renderData(data) {

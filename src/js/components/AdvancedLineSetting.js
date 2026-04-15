@@ -281,21 +281,23 @@ export class AdvancedLineSetting {
             }
         }, true);
 
-        // Update position on window events
-        window.addEventListener('resize', () => {
-            if (this.state.isOpen) this.updatePopoverPosition();
-        });
-
-        let parent = this.container.parentElement;
-        while (parent) {
-            if (parent === document.body) break;
-            const overflow = window.getComputedStyle(parent).overflowY;
-            if (overflow === 'auto' || overflow === 'scroll') {
-                parent.addEventListener('scroll', () => {
-                    if (this.state.isOpen) this.updatePopoverPosition();
+        // Bind global optimized resize/scroll listeners once
+        if (!AdvancedLineSetting.globalScrollBound) {
+            window.addEventListener('resize', () => {
+                AdvancedLineSetting.instances.forEach(instance => {
+                    if (instance.state.isOpen) instance.updatePopoverPosition();
                 });
-            }
-            parent = parent.parentElement;
+            });
+            
+            window.addEventListener('scroll', (e) => {
+                AdvancedLineSetting.instances.forEach(instance => {
+                    if (instance.state.isOpen && (e.target === document || (e.target.contains && e.target.contains(instance.container)))) {
+                        instance.updatePopoverPosition();
+                    }
+                });
+            }, true);
+            
+            AdvancedLineSetting.globalScrollBound = true;
         }
     }
 

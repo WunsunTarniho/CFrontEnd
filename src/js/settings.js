@@ -2334,6 +2334,8 @@ export class ToolSettingsController {
         // Final sync check
         this.updatePreview();
 
+        const isIndicator = !!this.activeTool.isIndicator;
+
         // Update chart defaults so next tool of this type uses these settings
         if (this.chart.styles && this.chart.styles.tools) {
             const type = this.activeTool.type;
@@ -2376,7 +2378,16 @@ export class ToolSettingsController {
             }
         }
 
-        this.chart.markToolDirty(this.activeTool, 'update');
+        // AUTO-SAVE POLICY:
+        // Jika ini indikator, simpan layout state secara otomatis.
+        // Jika ini gambar, panggil syncWithDatabase agar langsung tersimpan ke server (Auto-save).
+        if (isIndicator) {
+            if (window.autoSaveLayoutViewState) window.autoSaveLayoutViewState();
+        } else {
+            this.chart.markToolDirty(this.activeTool, 'update');
+            this.chart.syncWithDatabase(); // Auto-sync for drawing settings
+        }
+
         this.chart.render();
         if (window.sidebarController) {
             window.sidebarController.updateObjectTree();

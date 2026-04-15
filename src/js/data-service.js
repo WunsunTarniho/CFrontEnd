@@ -8,43 +8,75 @@ import {
     saveLayout,
     updateLayout,
     deleteLayout,
-    touchLayout,
-    saveTickerPreference,
-    getAllTickerPreferences
+    touchLayout
 } from './service.js';
 import { DEFAULT_WATCHLIST_SYMBOLS } from './constants.js';
 
 export let TF_SUPPORT_MAP = {};
+const historyCache = new Map();
 
-export async function fetchTimeframeConfigs() {
+export async function fetchTimeframeConfigs(stockId = null) {
     try {
-        const response = await fetch('http://localhost:5000/api/market/timeframes');
+        let url = `${apiBase}/api/v1/market/timeframes`;
+        if (stockId) url += `?id=${stockId}`;
+
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch timeframe configs');
-        TF_SUPPORT_MAP = await response.json();
+        const result = await response.json();
+
+        if (stockId) {
+            // Returns filtered list for specific ticker
+            return result.data || [];
+        } else {
+            // Returns base map
+            TF_SUPPORT_MAP = result;
+        }
     } catch (error) {
         console.error('Error fetching timeframe configs:', error);
+        return stockId ? [] : {};
     }
 }
 
+export function getEffectiveExchangeKey(exchange, isFutures) {
+    const normalized = (exchange || 'BINANCE').toUpperCase();
+    if (isFutures && TF_SUPPORT_MAP[`${normalized}_FUTURES`]) {
+        return `${normalized}_FUTURES`;
+    }
+    if (!isFutures && TF_SUPPORT_MAP[`${normalized}_SPOT`]) {
+        return `${normalized}_SPOT`;
+    }
+    return TF_SUPPORT_MAP[normalized] ? normalized : 'BINANCE_SPOT';
+}
+
 // ── Item C: Data Retrieval Logic ─────────────────────────────────────
-export const candleCache = {};
 
 // Fetch candles from API via backend proxy
 export async function fetchStockData(stock, timeframe, endDateTs = null) {
+    const ticker = stock.ticker;
+    const cacheKey = `${ticker}:${timeframe}:${stock.market}:${stock.exchange || ''}:${endDateTs || 'latest'}`;
+
+    if (historyCache.has(cacheKey)) {
+        // console.log(`[Cache Hit] Serving ${cacheKey} from memory`);
+        return historyCache.get(cacheKey);
+    }
+
     try {
         const loading = document.getElementById('loading-indicator');
         if (loading) loading.style.display = 'block';
 
-        const ticker = stock.ticker;
-        const apiBase = 'http://localhost:5000';
-        let url = `${apiBase}/api/market/history?symbol=${ticker}&timeframe=${timeframe}&market=${stock.market}&exchange=${stock.exchange || ''}&limit=1000`;
+        let url = `${apiBase}/api/v1/market/history?symbol=${ticker}&timeframe=${timeframe}&market=${stock.market}&exchange=${stock.exchange || ''}&limit=1000`;
         if (endDateTs) url += `&endDateTs=${endDateTs}`;
 
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Backend returned ${response.status}`);
 
         const data = await response.json();
-        // data is { candles: [], meta: { marketStatus: '...' } }
+        
+        // Save to memory cache
+        if (data && data.candles && data.candles.length > 0) {
+            historyCache.set(cacheKey, data);
+        }
+
         return data || { candles: [], meta: { marketStatus: 'REGULAR' } };
     } catch (error) {
         console.error('Error fetching data from backend:', error);
@@ -55,15 +87,17 @@ export async function fetchStockData(stock, timeframe, endDateTs = null) {
     }
 }
 
+export const apiBase = 'http://localhost:5000';
+
 export async function loadStockData(layoutId = null, forcedStock = null) {
     if (!window.chart) return;
     window.chart.isLoading = true;
 
-    // --- 1. Layout Logic First ---
     const layouts = await getLayouts();
-    let activeLayout = layoutId ? layouts.find(l => l._id === layoutId) : layouts[0];
+    let activeLayout = layoutId ? layouts.find(l => l.id === layoutId) : (window.chart.currentLayoutId ? layouts.find(l => l.id === window.chart.currentLayoutId) : layouts[0]);
 
-    // --- 2. Resolve Stock ID ---
+    if (!activeLayout && layouts.length > 0) activeLayout = layouts[0];
+
     const searchInput = document.getElementById('stock-search');
     let stock_id;
     let selectedExchange = '';
@@ -72,72 +106,39 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         stock_id = forcedStock._id || forcedStock.ticker;
         selectedExchange = forcedStock.primary_exchange || '';
     } else if (searchInput && searchInput.dataset.stockId) {
-        // High priority: what the user just clicked in search modal
         stock_id = searchInput.dataset.stockId;
         selectedExchange = searchInput.dataset.exchange || '';
-        // Clear it so it doesn't "stick" on subsequent timeframe/layout calls
         delete searchInput.dataset.stockId;
         delete searchInput.dataset.exchange;
-    } else if (activeLayout && activeLayout.lastTickerId) {
-        // Use last ticker from layout (covers initial load and layout switch)
-        stock_id = activeLayout.lastTickerId.ticker || activeLayout.lastTickerId;
+    } else if (activeLayout && activeLayout.lastTicker) {
+        stock_id = activeLayout.lastTicker;
+        if (typeof stock_id === 'object' && stock_id !== null) {
+            stock_id = stock_id.ticker || stock_id.symbol || stock_id.id || String(stock_id);
+        }
     } else {
-        // Fallback: pick the first item from watchlist if no current stock is set
         stock_id = window.chart.currentStockId || (DEFAULT_WATCHLIST_SYMBOLS[0] ? DEFAULT_WATCHLIST_SYMBOLS[0].ticker : null);
     }
 
-    // Resolve from Local Cache/DB Sync (last used for this ticker)
     if (!selectedExchange || selectedExchange === 'undefined') {
-        const savedExch = localStorage.getItem(`last_exchange_${stock_id}`);
-        if (savedExch) {
-            selectedExchange = savedExch;
+        if (activeLayout && activeLayout.lastExchange) {
+            selectedExchange = activeLayout.lastExchange;
         } else {
-            // NEW: Cross-device Ticker Preferences check
-            try {
-                const prefs = await getAllTickerPreferences();
-                // Match by ticker string (stock_id might be a ticker or Mongo ID)
-                const pref = prefs.find(p =>
-                    p.ticker.toUpperCase() === stock_id.toUpperCase()
-                );
-                if (pref) {
-                    selectedExchange = pref.lastExchange;
-                    console.log(`[loadStockData] Resolved Exchange from DB Preferences: ${selectedExchange}`);
-                }
-            } catch (e) {
-                console.warn('[loadStockData] Failed to fetch ticker preferences:', e);
-            }
-
-            if (!selectedExchange) {
-                // Smart defaults based on market
-                const market = activeLayout?.lastTickerId?.market || '';
-                if (market.toLowerCase().startsWith('stock') || market === 'commodities') {
-                    selectedExchange = 'YAHOO';
-                } else {
-                    selectedExchange = 'COINBASE';
-                }
+            const market = activeLayout?.lastTickerId?.market || '';
+            if (market.toLowerCase().startsWith('stock') || market === 'commodities') {
+                selectedExchange = 'YAHOO';
+            } else {
+                selectedExchange = 'BINANCE';
             }
         }
     }
-    console.log(`[loadStockData] Resolved Exchange for ${stock_id}: ${selectedExchange}`);
 
-    // Final safety check for stock_id
     if (!stock_id || stock_id === 'undefined') {
-        stock_id = (DEFAULT_WATCHLIST_SYMBOLS[0] ? DEFAULT_WATCHLIST_SYMBOLS[0].ticker : 'BTC-USD');
+        const fallbackStock = DEFAULT_WATCHLIST_SYMBOLS[0];
+        stock_id = (fallbackStock ? (fallbackStock.id || fallbackStock._id || fallbackStock.ticker) : 'BTCUSDT');
     }
 
-    let timeframe = window.chart?.timeframe || localStorage.getItem('last_timeframe') || document.querySelector('.tf-option.active')?.dataset.tf || '1d';
+    let timeframe = window.chart?.timeframe || document.querySelector('.tf-option.active')?.dataset.tf || '1d';
 
-    // Safety: Ensure timeframe is valid for this exchange (if map loaded)
-    const supported = TF_SUPPORT_MAP[selectedExchange] || [];
-    if (supported.length > 0 && !supported.includes(timeframe)) {
-        const fallback = supported.includes('1m') ? '1m' : supported[0];
-        console.warn(`[loadStockData] TF ${timeframe} not supported by ${selectedExchange}. Falling back to: ${fallback}`);
-        timeframe = fallback;
-    }
-
-    // Logic: Only override UI/last-used timeframe if:
-    // 1. Initial page load (window.chart.symbol is null)
-    // 2. We are explicitly switching to a DIFFERENT layout (layoutId exists and is new)
     const isInitialLoad = !window.chart?.symbol;
     const isLayoutSwitch = layoutId && layoutId !== window.chart?.currentLayoutId;
 
@@ -145,156 +146,105 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         timeframe = activeLayout.chartState.timeframe;
     }
 
-    // Sync UI to the resolved timeframe (Initial pass)
     if (window.setTfActive) window.setTfActive(timeframe);
 
-    // Robust Symbol Resolution (handles ID, Ticker, and Futures cache)
-    const response = await findStock(stock_id);
+    const response = await findStock(stock_id, selectedExchange);
     let stock = response?.data;
 
-    // Fallback if stock search fails completely
     if (!stock) {
-        console.warn(`Stock ID ${stock_id} not found, falling back to Default`);
-        const fallbackTicker = (DEFAULT_WATCHLIST_SYMBOLS[0] ? DEFAULT_WATCHLIST_SYMBOLS[0].ticker : 'BTC-USD');
-        stock = { ticker: fallbackTicker, name: 'Default', primary_exchange: 'COINBASE' };
+        const fallbackTicker = (DEFAULT_WATCHLIST_SYMBOLS[0] ? DEFAULT_WATCHLIST_SYMBOLS[0].ticker : 'BTCUSDT');
+        stock = { ticker: fallbackTicker, name: 'Default', market: 'crypto', primary_exchange: 'BINANCE' };
     }
 
-    // Update storage early to maintain consistency across ticker switches
-    localStorage.setItem('last_timeframe', timeframe);
-
-    // --- 3. Initial UI Sync for Timeframes ---
     const currentIsFutures = stock.ticker?.endsWith('.P') || stock.type === 'FUTURES' || (window.chart && window.chart.type === 'FUTURES');
-    updateTimeframeOptions(stock.market || 'crypto', selectedExchange || stock.primary_exchange, currentIsFutures);
+    
+    // Fetch ticker-specific supported timeframes (Strict Core Pair rules)
+    const tickerId = stock.id || stock._id || stock.ticker;
+    const supported = await fetchTimeframeConfigs(tickerId);
 
-    // --- 3. Safety Check if Layout doesn't exist ---
-    if (!activeLayout) {
-        activeLayout = await saveLayout({
-            name: 'Default Workspace',
-            userId: "1",
-            lastSymbol: stock?.ticker || 'BTCUSDT',
-            lastTickerId: stock?._id || BTC_ID
-        });
-        layouts.unshift(activeLayout);
+    // Validate and fallback timeframe if not supported by this ticker
+    if (supported && supported.length > 0 && !supported.includes(timeframe)) {
+        const fallback = supported.includes('1m') ? '1m' : supported[0];
+        timeframe = fallback;
     }
 
-    // --- 3. Safety Check: Clear cache if symbol OR exchange changes
-    const isSymbolChanged = window.chart.symbol && window.chart.symbol !== stock.ticker;
-    const isExchangeChanged = window.chart.exchange && window.chart.exchange !== selectedExchange;
+    updateTimeframeOptions(stock.market || 'crypto', selectedExchange || stock.primary_exchange, currentIsFutures, supported);
 
-    if (isSymbolChanged || isExchangeChanged) {
-        // ALWAYS Unsubscribe from old symbol and exchange to prevent "stuck" high-frequency streams
+    const isSymbolChanged = window.chart.symbol !== stock.ticker;
+    const isExchangeChanged = window.chart.exchange !== selectedExchange;
+
+    if (isInitialLoad || isSymbolChanged || isExchangeChanged) {
         if (window.chart.symbol) {
-            console.log(`[loadStockData] Switching symbol: Unsubscribing from ${window.chart.symbol} (${window.chart.exchange})`);
             window.chart.unsubscribe(window.chart.symbol, window.chart.exchange);
         }
-        // Purge old cache to ensure data freshness for the new source
-        for (let key in candleCache) delete candleCache[key];
         window.chart.clearSymbol();
         window.chart.render();
     }
 
+    const effectiveKeyForSeconds = getEffectiveExchangeKey(selectedExchange, currentIsFutures);
+    const supportsSeconds = TF_SUPPORT_MAP[effectiveKeyForSeconds]?.some(tf => tf.endsWith('s'));
 
-    // --- 3. Market-Based Timeframe Adjustment ---
-    // If Futures or market doesn't support seconds, fallback to 1m
-    const supportsSeconds = TF_SUPPORT_MAP[selectedExchange]?.some(tf => tf.endsWith('s'));
-    const isFutures = stock.type === 'FUTURES' || stock.ticker?.endsWith('.P');
-
-    if ((stock.market === 'stocks' || stock.market === 'commodities' || isFutures || !supportsSeconds) && timeframe.endsWith('s')) {
-        console.info(`[loadStockData] Fallback: Seconds not supported for ${stock.ticker} on ${selectedExchange}. Forcing 1m.`);
+    if ((stock.market === 'stocks' || stock.market === 'commodities' || !supportsSeconds) && timeframe.endsWith('s')) {
         timeframe = '1m';
     }
 
     if (selectedExchange) stock.exchange = selectedExchange;
 
-    if (selectedExchange) stock.exchange = selectedExchange;
-
     const responseData = await fetchStockData(stock, timeframe);
-
     const data = responseData.candles || [];
     const meta = responseData.meta || { marketStatus: 'REGULAR' };
 
     window.chart.symbol = stock.ticker;
     window.chart.instrument = stock.name;
-    window.chart.currency = stock.currency_symbol ?? (stock.currency_name ? stock.currency_name.toUpperCase() : '');
+    window.chart.currency = stock.currency ?? (stock.currency ? stock.currency.toUpperCase() : '');
+    window.chart.base_currency_symbol = stock.base_currency_symbol;
     window.chart.exchange = selectedExchange || stock.exchange || stock.primary_exchange;
-    window.chart.market = stock.market;
+    window.chart.market = stock.asset_type || stock.market;
+    window.chart.asset_type = stock.asset_type || stock.market;
+    window.chart.rawData = data;
     window.chart.setTimeframe(timeframe);
 
     if (data.length > 0) {
-        const cacheKey = `${stock.ticker}_${window.chart.exchange}_${timeframe}`;
-        candleCache[cacheKey] = data;
         await window.chart.syncWithDatabase();
     }
 
-    // Persist Choice (Local + DB)
-    if (window.chart.exchange) {
-        localStorage.setItem(`last_exchange_${stock.ticker}`, window.chart.exchange);
-        if (stock._id) localStorage.setItem(`last_exchange_${stock._id}`, window.chart.exchange);
-        saveTickerPreference(stock.ticker, window.chart.exchange).catch(e => console.error("DB save error:", e));
-    }
     window.chart.marketStatus = meta.marketStatus;
 
-    // --- Smart Cache Merge ---
-    let finalData = data;
-    if (data.length > 0) {
-        try {
-            const cacheKey = `chart_cache_${stock.ticker}_${selectedExchange || stock.exchange}_${timeframe}`;
-            const cachedDataStr = localStorage.getItem(cacheKey);
-            if (cachedDataStr) {
-                const cachedCandles = JSON.parse(cachedDataStr);
-                if (Array.isArray(cachedCandles) && cachedCandles.length > 0) {
-                    const lastApiTs = data[data.length - 1].timestamp;
-                    const newFromCache = cachedCandles.filter(c => c.timestamp > lastApiTs);
-                    if (newFromCache.length > 0) {
-                        console.log(`[SmartCache] Bridging gap with ${newFromCache.length} cached candles`);
-                        finalData = [...data, ...newFromCache];
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('[SmartCache] Merge failed:', e);
-        }
-    }
-
-    window.chart.rawData = finalData;
-
-    // Apply chart mode early to avoid flicker (fallback to candle if missing)
-    window.chart.chartMode = activeLayout.chartState?.chartMode || 'candle';
+    window.chart.chartMode = 'candle'; // Always default to candle
 
     window.chart.currentStockId = stock_id;
     window.chart.drawingTools = [];
     window.chart.selectedTool = null;
 
-    // Sync with sidebar UI
     if (window.sidebarController) {
         window.sidebarController.currentLayouts = layouts;
     }
 
-    // --- Data Loading ---
-    window.chart.setTimeframe(timeframe);
     window.chart.connectWebSocket(stock, DEFAULT_WATCHLIST_SYMBOLS);
-    window.chart.currentStockId = stock._id;
+    window.chart.currentStockId = stock.id || stock.ticker;
 
-    await touchLayout(activeLayout._id);
-    window.chart.currentLayoutId = activeLayout._id;
-    window.chart.tickerId = stock._id; // New: Pass stock DB ID for drawing persistence
+    await touchLayout(activeLayout.id);
+    window.chart.currentLayoutId = activeLayout.id;
+    window.chart.tickerId = stock.id || stock.ticker;
 
-    // Emit layout change for top bar UI
     window.dispatchEvent(new CustomEvent('layout-changed', { detail: { name: activeLayout.name } }));
 
-    // Load drawings for THIS layout AND THIS symbol/ticker
     const result = await getDrawingTools({
-        layoutId: activeLayout._id,
+        layoutId: activeLayout.id,
         symbol: stock.ticker,
-        exchange: selectedExchange || stock.exchange || stock.primary_exchange
+        exchange: window.chart.exchange
     });
+
     if (result && result.data) {
+        const mainPane = window.chart.panes.find(p => p.id === 'main');
         result.data.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+
         for (const d of result.data) {
             const tool = window.chart.createDrawingTool(d.toolType, d.points, d.style);
             if (tool) {
+                tool.pane = mainPane;
                 tool.requiredPoints = d.points.length;
-                tool.id = d._id;
+                tool.id = d.id;
                 tool.isHidden = !!d.isHidden;
                 tool.isLocked = !!d.isLocked;
                 if (d.name) tool.name = d.name;
@@ -303,37 +253,25 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
         }
     }
 
-    // Apply Indicators from Layout
     if (activeLayout.indicators && activeLayout.indicators.length > 0) {
         if (window.chart && activeLayout.indicators) {
-            // Batch add indicators without triggering individual renders
+            window.chart.isRestoring = true;
             activeLayout.indicators.forEach(ind => {
-                const doc = ind.indicatorId;
+                const doc = ind.indicator; // Access the populated indicator object
                 if (doc && ind.isVisible !== false) {
                     const script = doc.script || '';
                     window.chart.addIndicator(doc.name, script, {
                         ...ind.settings,
-                        indicatorId: doc._id,
+                        indicatorId: doc.id,
                         isVisible: ind.isVisible
-                    }, true); // Pass true to skip internal render
+                    }, true);
                 }
             });
+            window.chart.isRestoring = false;
         }
     }
 
 
-    // [CHART STATE RESTORATION] - Restore zoom, scroll, etc.
-    if (window.chart && activeLayout.chartState) {
-        window.chart.applyChartState(activeLayout.chartState);
-
-        // Sync UI Timeframe and Chart Mode
-        if (activeLayout.chartState.timeframe && window.setTfActive && isInitialLoad) {
-            window.setTfActive(activeLayout.chartState.timeframe);
-        }
-        if (activeLayout.chartState.chartMode && window.setChartModeActive) {
-            window.setChartModeActive(activeLayout.chartState.chartMode);
-        }
-    }
     if (window.setSearchTicker && window.chart.symbol) {
         window.setSearchTicker(window.chart.symbol);
     }
@@ -342,9 +280,9 @@ export async function loadStockData(layoutId = null, forcedStock = null) {
     }
 
     if (window.chart) window.chart.render();
-
-    // --- 5. Final UI Sync (After all layout/chart state is applied) ---
+    await autoSaveLayoutViewState();
     if (window.setTfActive) window.setTfActive(timeframe);
+    if (window.chart) window.chart.clearDirtyState();
 }
 
 export async function saveCurrentLayout() {
@@ -352,34 +290,10 @@ export async function saveCurrentLayout() {
 
     try {
         const layouts = await getLayouts();
-        const activeLayout = layouts.find(l => l._id === window.chart.currentLayoutId);
+        const activeLayout = layouts.find(l => l.id === window.chart.currentLayoutId);
         if (!activeLayout) return;
 
-        const chartState = window.chart.getChartState();
-
-        // --- 1. Merge timeframe-specific state ---
         const currentTf = window.chart.timeframe;
-        const oldChartState = activeLayout.chartState || {};
-        const oldTimeframeStates = oldChartState.timeframeStates || {};
-
-        // Construct a CLEAN but COMPLETE chart state
-        activeLayout.chartState = {
-            ...oldChartState, // Preserve existing global fields (like paneProportions)
-            timeframe: chartState.timeframe,
-            chartMode: chartState.chartMode,
-            timezone: chartState.timezone,
-            precision: chartState.precision,
-            modeConfigs: chartState.modeConfigs || oldChartState.modeConfigs,
-            paneProportions: chartState.paneProportions || oldChartState.paneProportions,
-            timeframeStates: {
-                ...oldTimeframeStates
-            }
-        };
-
-        // Update the state for the ACTIVE timeframe
-        if (chartState.currentTimeframeState) {
-            activeLayout.chartState.timeframeStates[currentTf] = chartState.currentTimeframeState;
-        }
 
         const indicators = (window.chart.indicators || []).map(ind => ({
             indicatorId: ind.indicatorId || ind.id,
@@ -392,110 +306,93 @@ export async function saveCurrentLayout() {
         }));
 
         await updateLayout(window.chart.currentLayoutId, {
-            chartState: activeLayout.chartState,
+            chartState: {
+                timeframe: currentTf,
+                chartMode: window.chart.chartMode || 'candle'
+            },
             indicators,
-            lastSymbol: window.chart.symbol,
-            lastTickerId: window.chart.tickerId
+            lastTicker: window.chart.symbol,
+            lastExchange: window.chart.exchange
         });
-        window.chart.isLayoutDirty = false;
-        console.log(`Layout saved successfully (Timeframe: ${currentTf})`);
+        window.chart.clearDirtyState();
+        console.log(`Layout saved.`);
     } catch (error) {
         console.error('Failed to save layout:', error);
+    }
+}
+
+export async function autoSaveLayoutViewState() {
+    if (!window.chart?.currentLayoutId || !window.chart.symbol) return;
+
+    try {
+        const currentTf = window.chart.timeframe;
+
+        const indicators = (window.chart.indicators || []).map(ind => ({
+            indicatorId: ind.indicatorId || ind.id,
+            isVisible: ind.isVisible !== false,
+            settings: {
+                position: ind.position,
+                collapsed: ind.collapsed,
+                ...(ind.settings || {})
+            }
+        }));
+
+        await updateLayout(window.chart.currentLayoutId, {
+            chartState: {
+                timeframe: currentTf,
+                chartMode: window.chart.chartMode || 'candle'
+            },
+            indicators,
+            lastTicker: window.chart.symbol,
+            lastExchange: window.chart.exchange
+        });
+    } catch (error) {
+        console.warn('[AutoSave] Failed:', error);
     }
 }
 
 export async function handleTimeframeChange(timeframe) {
     if (!window.chart) return;
 
-    console.log(`[handleTimeframeChange] Requested: ${timeframe}`);
-
-    // Persist Choice
-    localStorage.setItem('last_timeframe', timeframe);
     if (window.setTfActive) window.setTfActive(timeframe);
-    if (window.setChartModeActive) window.setChartModeActive(window.chart.chartMode || 'candle');
 
     const ticker = window.chart.symbol;
     if (!ticker) {
-        console.warn('[handleTimeframeChange] No active ticker found, just setting timeframe label.');
         window.chart.setTimeframe(timeframe);
         return;
     }
 
-    const exchange = window.chart.exchange || localStorage.getItem(`last_exchange_${ticker}`) || 'BINANCE';
+    const exchange = window.chart.exchange || 'BINANCE';
     const market = window.chart.market || 'crypto';
-    const cacheKey = `${ticker}_${exchange}_${timeframe}`;
 
-    // 1. Save current view BEFORE switching timeframe
-    await saveCurrentLayout().catch(e => console.warn("Layout save error:", e));
-
-    const layouts = await getLayouts();
-    const activeLayout = layouts.find(l => l._id === window.chart.currentLayoutId);
-
-    // 2. Cache Hit check
-    if (candleCache[cacheKey]) {
-        console.log(`[handleTimeframeChange] Cache HIT for ${cacheKey}`);
-        window.chart.rawData = candleCache[cacheKey];
-        window.chart.setTimeframe(timeframe);
-
-        // Restore state for the cached timeframe if available
-        if (activeLayout?.chartState) {
-            window.chart.applyChartState(activeLayout.chartState);
-        }
-
-        window.chart.render();
-        return;
-    }
-
-    // 3. Market-Based Timeframe Adjustment (Fallback for Futures seconds)
     let effectiveTf = timeframe;
-    const supportsSeconds = TF_SUPPORT_MAP[exchange]?.some(tf => tf.endsWith('s'));
-    const isFutures = ticker.endsWith('.P') || window.chart.type === 'FUTURES';
+    const effectiveKeyForTf = getEffectiveExchangeKey(exchange, window.chart?.type === 'FUTURES');
+    const supportsSeconds = TF_SUPPORT_MAP[effectiveKeyForTf]?.some(tf => tf.endsWith('s'));
 
-    if ((market === 'stocks' || market === 'commodities' || isFutures || !supportsSeconds) && timeframe.endsWith('s')) {
-        console.info(`[handleTimeframeChange] Sub-minute not supported for ${ticker}. Forcing fallback to 1m.`);
+    if ((market === 'stocks' || market === 'commodities' || !supportsSeconds) && timeframe.endsWith('s')) {
         effectiveTf = '1m';
     }
 
-    // 4. Fetch Data
-    console.log(`[handleTimeframeChange] Dispatching request for ${ticker} @ ${effectiveTf} (Target UI: ${timeframe})`);
     try {
         const responseData = await fetchStockData({ ticker, market, exchange }, effectiveTf);
         const data = responseData.candles || [];
         const meta = responseData.meta || { marketStatus: 'REGULAR' };
 
+        window.chart.rawData = data;
         window.chart.marketStatus = meta.marketStatus;
-
-        // Update Chartify Instance
         window.chart.setTimeframe(timeframe);
 
         if (data && data.length > 0) {
-            console.log(`[handleTimeframeChange] Success. Received ${data.length} candles.`);
-            candleCache[cacheKey] = data;
-            window.chart.rawData = data;
-
-            // Restore zoom/scroll/scroll for the NEW timeframe
-            if (activeLayout?.chartState) {
-                window.chart.applyChartState(activeLayout.chartState);
-                if (activeLayout.chartState.chartMode && window.setChartModeActive) {
-                    window.setChartModeActive(activeLayout.chartState.chartMode);
-                }
+            // NO RESTORE POSITION - FULL FIT INSTEAD
+            if (typeof window.chart.fullFit === 'function') {
+                window.chart.fullFit();
+            } else if (typeof window.chart.goToLastCandle === 'function') {
+                window.chart.goToLastCandle();
             }
-
-            window.chart.render();
-
-            if (window.setSearchTicker && window.chart.symbol) {
-                window.setSearchTicker(window.chart.symbol);
-            }
-
-            // Dispatch event to refresh Top Bar / Indicators
-            if (window.dispatchEvent) {
-                window.dispatchEvent(new CustomEvent('chartify:data-loaded', {
-                    detail: { chart: window.chart, timeframe, exchange }
-                }));
-            }
-        } else {
-            console.warn(`[handleTimeframeChange] Received empty data for ${ticker}`);
-            window.chart.render(); // Still render to clear old data if necessary
+        }
+        window.chart.render();
+        if (data && data.length > 0) {
+            await autoSaveLayoutViewState();
         }
     } catch (error) {
         console.error(`[handleTimeframeChange] Fetch failed:`, error);
@@ -506,35 +403,23 @@ export async function handleTimeframeChange(timeframe) {
 export async function setDateRangeAndInterval(rangeLabel, defaultTimeframe, btnElement) {
     document.querySelectorAll('.date-ranges button').forEach(btn => btn.classList.remove('active'));
     if (btnElement) btnElement.classList.add('active');
-
     if (window.setTfActive) window.setTfActive(defaultTimeframe);
-
     await loadStockData();
-
     if (window.chart) {
         let chartRange = rangeLabel.toLowerCase();
         window.chart.setDateRange(chartRange === 'all' ? 'all' : chartRange);
     }
 }
 
-export function updateTimeframeOptions(market, exchange = 'BINANCE', isFutures = false) {
+export function updateTimeframeOptions(market, exchange = 'BINANCE', isFutures = false, supportedOverride = null) {
     const secondsLabel = document.getElementById('tf-seconds-label');
     const secondsGroup = document.getElementById('tf-seconds-group');
 
     if (!secondsLabel || !secondsGroup) return;
 
-    // Normalise Case for Lookup
-    const normalizedExchange = (exchange || 'BINANCE').toUpperCase();
-
-    // Use specific Futures config if applicable
-    const effectiveExchange = (isFutures && TF_SUPPORT_MAP[`${normalizedExchange}_FUTURES`])
-        ? `${normalizedExchange}_FUTURES`
-        : normalizedExchange;
-
-    console.log(`[updateTimeframeOptions] Market: ${market}, Original Exch: ${exchange}, Effective: ${effectiveExchange}, isFutures: ${isFutures}`);
-
-    // Hide seconds category if market is not crypto OR exchange doesn't support sub-minute intervals
-    const supported = TF_SUPPORT_MAP[effectiveExchange] || [];
+    const effectiveExchange = getEffectiveExchangeKey(exchange, isFutures);
+    const supported = supportedOverride || TF_SUPPORT_MAP[effectiveExchange] || [];
+    
     const supportsSeconds = supported.some(tf => tf.endsWith('s'));
     const shouldHideSeconds = (market === 'stocks' || market === 'commodities' || !supportsSeconds);
 
@@ -546,9 +431,9 @@ export function updateTimeframeOptions(market, exchange = 'BINANCE', isFutures =
         secondsGroup.style.display = 'grid';
     }
 
-    // Filter individual options
     document.querySelectorAll('.tf-option').forEach(opt => {
         const tf = opt.dataset.tf;
+        // If we have a specific list, hide everything not in it
         if (supported.length > 0 && !supported.includes(tf)) {
             opt.style.display = 'none';
         } else {
@@ -556,10 +441,8 @@ export function updateTimeframeOptions(market, exchange = 'BINANCE', isFutures =
         }
     });
 
-    // Also hide group labels if all options in that group are hidden
     document.querySelectorAll('.tf-popup > .tf-group-label').forEach(label => {
         if (label.id === 'tf-seconds-label') return;
-
         const nextGroup = label.nextElementSibling;
         if (nextGroup && nextGroup.classList.contains('tf-group')) {
             const hasVisible = Array.from(nextGroup.children).some(child => child.style.display !== 'none');
@@ -567,19 +450,4 @@ export function updateTimeframeOptions(market, exchange = 'BINANCE', isFutures =
             nextGroup.style.display = hasVisible ? 'grid' : 'none';
         }
     });
-}
-
-export async function syncTickerPreferences() {
-    try {
-        const res = await getAllTickerPreferences();
-        // Backend returns a direct array of preferences
-        if (Array.isArray(res)) {
-            res.forEach(pref => {
-                localStorage.setItem(`last_exchange_${pref.ticker}`, pref.lastExchange);
-            });
-            console.log("Ticker preferences synced from DB");
-        }
-    } catch (e) {
-        console.error("Sync error:", e);
-    }
 }

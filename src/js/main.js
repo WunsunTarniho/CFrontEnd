@@ -11,12 +11,11 @@ import { ScriptEditorController } from './script-editor.js';
 import { LayoutMenuController } from './layout-menu-controller.js';
 import { ChartSettingsController } from './chart-settings.js';
 import {
-    candleCache,
     handleTimeframeChange,
     fetchStockData,
     loadStockData,
     saveCurrentLayout,
-    syncTickerPreferences,
+    autoSaveLayoutViewState,
     setDateRangeAndInterval,
     fetchTimeframeConfigs
 } from './data-service.js';
@@ -34,7 +33,6 @@ import {
 } from './utils.js';
 
 // Global state / Legacy support
-window.candleCache = candleCache;
 window.handleTimeframeChange = handleTimeframeChange;
 window.fetchStockData = fetchStockData;
 window.loadStockData = loadStockData;
@@ -44,19 +42,28 @@ window.closeTfPopup = closeTfPopup;
 window.setTfActive = setTfActive;
 window.setChartModeActive = setChartModeActive;
 window.saveCurrentLayout = saveCurrentLayout;
+window.autoSaveLayoutViewState = autoSaveLayoutViewState; // NEW: Expose for library usage
 window.searchStock = searchStock;
 window.setSearchTicker = setSearchTicker;
 
 // Initialize the managers when DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
+    // CLEANUP: Purge legacy storage as per strict policy
+    Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('last_exchange_') || key === 'last_timeframe') {
+            localStorage.removeItem(key);
+        }
+    });
+
     // Instantiate core chart
-    const initialTf = localStorage.getItem('last_timeframe') || '1d';
+    const initialTf = '1d'; // Force daily as start timeframe instead of reading from cache
     window.chart = new Chartify('chart-container', {
         timeframe: initialTf,
         isShowDrawing: true,
         onSync: bulkSyncDrawingTools,
         onLoadMore: async (earliestTs) => {
             const stock = {
+                id: window.chart.currentStockId,
                 ticker: window.chart.symbol,
                 market: window.chart.market,
                 exchange: window.chart.exchange
@@ -132,7 +139,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initial data load
     await fetchTimeframeConfigs();
-    await syncTickerPreferences();
     await loadStockData();
 
     // Load active ZenScript if exists
@@ -147,6 +153,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error("Error loading active script:", e);
         }
     }
+
+    // FINAL RESET: Ensure initial load doesn't trigger "unsaved changes"
+    if (window.chart) {
+        window.chart.isLayoutDirty = false;
+    }
 });
 
 // Undo / Redo Button Listeners
@@ -156,6 +167,39 @@ document.getElementById('undo-btn')?.addEventListener('click', () => {
 document.getElementById('redo-btn')?.addEventListener('click', () => {
     if (window.chart) window.chart.redo();
 });
+document.getElementById('top-bar-save-btn')?.addEventListener('click', async () => {
+    if (window.chart) {
+        await window.chart.syncWithDatabase();
+        if (typeof window.saveCurrentLayout === 'function') {
+            await window.saveCurrentLayout();
+        }
+    }
+});
+
+// Global Shortcuts
+document.addEventListener('keydown', async (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (window.chart) {
+            await window.chart.syncWithDatabase();
+            if (typeof window.saveCurrentLayout === 'function') {
+                await window.saveCurrentLayout();
+            }
+        }
+    }
+});
+
+// Dirty State / Unsaved Changes UI Listener
+window.addEventListener('chartify:dirty-change', (e) => {
+    const saveBtn = document.getElementById('top-bar-save-btn');
+    if (saveBtn) {
+        if (e.detail.isDirty) {
+            saveBtn.classList.add('unsaved-changes');
+        } else {
+            saveBtn.classList.remove('unsaved-changes');
+        }
+    }
+});
 
 // Search Modal functions
 function setupSearchModal() {
@@ -164,6 +208,16 @@ function setupSearchModal() {
     const searchModalBackdrop = document.getElementById('search-modal-backdrop');
     const openSearchBtn = document.getElementById('open-search-modal');
     const closeSearchBtn = document.getElementById('close-search-modal');
+    const topBarObBtn = document.getElementById('top-bar-orderbook-btn');
+
+    if (topBarObBtn) {
+        topBarObBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (window.sidebarController) {
+                window.sidebarController.switchTab('orderbook-view');
+            }
+        });
+    }
 
     if (!searchInput || !searchModalBackdrop) return;
 
@@ -226,7 +280,7 @@ function setupSearchModal() {
                     </div>
                 </div>
             `;
-            div.dataset.id = stock.ticker;
+            div.dataset.id = stock.id || stock.ticker;
             div.dataset.exchange = exch;
             div.dataset.currency = stock.currency;
             div.dataset.market = market;
@@ -270,16 +324,16 @@ function setupSearchModal() {
         searchResults.innerHTML = '';
         const response = await searchStock(searchTerm);
         const filteredStocks = response.data || [];
-
+        console.log(filteredStocks, 'ddddddddd')
         filteredStocks.forEach(stock => {
             const div = document.createElement('div');
             div.className = 'search-item';
 
             const displayTicker = extractSymbol(stock.ticker);
             const exch = stock.primary_exchange || stock.exchange || '';
-            const market = stock.market || 'crypto';
+            const market = stock.asset_type || stock.market || 'crypto';
             const type = stock.type || 'spot';
-            const logoUrl = getTickerLogo(stock.ticker, stock.currency_name, market);
+            const logoUrl = getTickerLogo(stock.base_currency_symbol || displayTicker, market);
 
             div.innerHTML = `
                 <div class="search-item-left">
@@ -308,7 +362,7 @@ function setupSearchModal() {
                     </div>
                 </div>
             `;
-            div.dataset.id = stock.ticker;
+            div.dataset.id = stock.id || stock.ticker;
             div.dataset.exchange = exch;
             div.dataset.currency = stock.currency_name;
             div.dataset.market = market;
@@ -328,14 +382,23 @@ function setupSearchModal() {
             const name = descEl ? descEl.textContent : '';
             const exchange = item.dataset.exchange || '';
 
-            // Save to recent
-            saveRecentStock({ ticker: item.dataset.id, name, primary_exchange: exchange, currency: item.dataset.currency, market: item.dataset.market });
+            // Save to recent (Pass stock.id as 'ticker' property for existing compat, or better: pass full stock object)
+            saveRecentStock({ 
+                id: item.dataset.id, 
+                ticker: ticker, 
+                name, 
+                primary_exchange: exchange, 
+                currency: item.dataset.currency, 
+                market: item.dataset.market 
+            });
 
             searchInput.value = ticker;
             searchInput.dataset.stockId = item.dataset.id;
             searchInput.dataset.exchange = exchange;
             closeSearchModal();
-            await loadStockData();
+            
+            // Pass the selected stock as forcedStock (2nd param) to ensure it overrides layout defaults
+            await loadStockData(null, { id: item.dataset.id, ticker: ticker, primary_exchange: exchange });
         }
     });
 
@@ -375,9 +438,6 @@ function setupChartTypeSelector() {
 
             if (window.chart) {
                 window.chart.setMode(mode);
-                if (typeof window.saveCurrentLayout === 'function') {
-                    window.saveCurrentLayout();
-                }
             }
             if (window.chartSettingsController) window.chartSettingsController.showSymbolSection(mode);
         });

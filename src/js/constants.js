@@ -1,5 +1,5 @@
 export const DEFAULT_WATCHLIST_SYMBOLS = [
-    { ticker: 'NVDA', currency: 'usd', market: 'stock', },
+    // { ticker: 'NVDA', currency: 'usd', market: 'stock', },
     // { ticker: 'AMD', currency: 'usd', market: 'stock', },
     // { ticker: 'BTCUSDT', currency: 'usdt', market: 'crypto', base_asset: 'BTC', quote_asset: 'USDT' },
     // { ticker: 'ETHUSDT', currency: 'usdt', market: 'crypto', base_asset: 'ETH', quote_asset: 'USDT' },

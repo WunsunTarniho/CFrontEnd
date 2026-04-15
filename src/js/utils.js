@@ -221,13 +221,12 @@ export function extractSymbol(ticker) {
     return s;
 }
 
-export function getTickerLogo(ticker, currency = '', market = 'crypto') {
-    let fullTicker = (ticker || "").toUpperCase();
-    let symbol = fullTicker;
+export function getTickerLogo(base, market = 'crypto') {
+    base = (base || "").toUpperCase();
 
     // 1. Handle Global Indices (Yahoo Style: ^SPX, ^DJI, ^IXIC)
-    if (symbol.startsWith('^')) {
-        const index = symbol.substring(1).toUpperCase();
+    if (base.startsWith('^')) {
+        const index = base.substring(1).toUpperCase();
         if (index === 'SPX' || index === 'SPY') return 'https://static.wikia.nocookie.net/logopedia/images/4/4b/S%26P_500_logo.svg.png';
         if (index === 'DJI') return 'https://www.spglobal.com/spdji/en/idbi/dow-jones-industrial-average.png';
         if (index === 'IXIC' || index === 'NDX') return 'https://www.nasdaq.com/favicon.ico';
@@ -236,26 +235,16 @@ export function getTickerLogo(ticker, currency = '', market = 'crypto') {
     }
 
     // 2. Handle Forex and Metals (Yahoo Style: EURUSD=X, XAUUSD=X)
-    if (symbol.endsWith('=X') || market === 'forex') {
-        const base = symbol.replace('=X', '').substring(0, 3).toLowerCase();
+    if (base.endsWith('=X') || market === 'forex') {
+        const base = base.replace('=X', '').substring(0, 3).toLowerCase();
         if (base === 'xau' || base === 'xag') return `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.17.2/128/color/${base}.png`; // Verified
         return `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.17.2/128/color/${base}.png`; // Verified
     }
 
     if (market === 'crypto' || !market) {
-        // Strip .P suffix for Perpetual Futures icons
-        symbol = symbol.replace('.P', '');
-        if (market === 'crypto') {
-            symbol = symbol.replace(currency.toUpperCase(), '')
-        }
-        // Very reliable crypto icon source
-        return `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.17.2/128/color/${symbol.toLowerCase()}.png`;
+        return `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.17.2/128/color/${base.toLowerCase()}.png`;
     } else {
-        if (currency.toLowerCase() === 'usd') {
-            symbol = symbol.split('.')[0]
-        }
-        // Ticker Logos repo is a high-quality community maintained source
-        return `https://companiesmarketcap.com/img/company-logos/64/${symbol.toUpperCase()}.png`;
+        return `https://companiesmarketcap.com/img/company-logos/64/${base.toUpperCase()}.png`;
     }
 }
 

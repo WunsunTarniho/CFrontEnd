@@ -69,7 +69,7 @@ export class IndicatorsModalController {
 
     async fetchUserIndicators() {
         try {
-            const response = await fetch('http://localhost:5000/api/indicators?userId=1');
+            const response = await fetch('http://localhost:5000/api/v1/indicators?userId=1');
             const result = await response.json();
             
             if (result.success && result.data.length > 0) {
@@ -117,7 +117,7 @@ export class IndicatorsModalController {
             // Click on row (anywhere except actions) -> Add to chart
             item.addEventListener('click', (e) => {
                 if (e.target.closest('.item-actions') || e.target.closest('.favorite-btn')) return;
-                this.chart.addIndicator(ind.name, ind.script, ind._id);
+                this.chart.addIndicator(ind.name, ind.script, ind.id);
                 this.hide();
             });
 
@@ -133,7 +133,7 @@ export class IndicatorsModalController {
             // Delete button
             item.querySelector('.delete').addEventListener('click', async (e) => {
                 e.stopPropagation();
-                const id = ind.id || ind._id;
+                const id = ind.id;
                 if (confirm(`Are you sure you want to delete "${ind.name}"?`)) {
                     await this.deleteIndicator(id);
                 }
@@ -151,7 +151,7 @@ export class IndicatorsModalController {
 
     async deleteIndicator(id) {
         try {
-            const response = await fetch(`http://localhost:5000/api/indicators/${id}`, {
+            const response = await fetch(`http://localhost:5000/api/v1/indicators/${id}`, {
                 method: 'DELETE'
             });
             const result = await response.json();
@@ -191,7 +191,7 @@ export class IndicatorsModalController {
 
     async saveScript(name, script) {
         try {
-            const response = await fetch('http://localhost:5000/api/indicators', {
+            const response = await fetch('http://localhost:5000/api/v1/indicators', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, script, userId: "1" })

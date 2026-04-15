@@ -43,7 +43,7 @@
     border: 1px solid #363a45;
     border-radius: 6px;
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
-    z-index: 2000;
+    z-index: 4000;
     display: none;
     padding: 6px 0;
 }

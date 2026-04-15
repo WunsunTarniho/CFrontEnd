@@ -144,7 +144,7 @@ export class ScriptEditorController {
         if (scriptData) {
             this.editor.setValue(scriptData.script);
             this.currentScriptName = scriptData.name;
-            this.currentScriptId = scriptData.id || scriptData._id;
+            this.currentScriptId = scriptData.id;
             this.nameInput.value = scriptData.name;
         } else {
             this.currentScriptId = null;
@@ -204,8 +204,8 @@ export class ScriptEditorController {
 
         try {
             const url = this.currentScriptId 
-                ? `http://localhost:5000/api/indicators/${this.currentScriptId}` 
-                : 'http://localhost:5000/api/indicators';
+                ? `http://localhost:5000/api/v1/indicators/${this.currentScriptId}` 
+                : 'http://localhost:5000/api/v1/indicators';
             
             const method = this.currentScriptId ? 'PUT' : 'POST';
 
@@ -218,7 +218,7 @@ export class ScriptEditorController {
             if (result.success) {
                 this.logConsole(`Script "${name}" ${this.currentScriptId ? 'updated' : 'saved'} successfully!`, 'success');
                 this.currentScriptName = name;
-                if (!this.currentScriptId) this.currentScriptId = result.data.id || result.data._id;
+                if (!this.currentScriptId) this.currentScriptId = result.data.id;
                 document.getElementById('editor-script-name').textContent = name;
                 // Refresh modal list if it's open
                 if (window.indicatorsModalController) {
