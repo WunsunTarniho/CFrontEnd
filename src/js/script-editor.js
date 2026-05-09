@@ -98,7 +98,7 @@ export class ScriptEditorController {
                 { token: 'operator', foreground: 'ff79c6' },
             ],
             colors: {
-                'editor.background': '#131722',
+                'editor.background': '#000000',
                 'editor.foreground': '#d1d4dc',
                 'editor.lineHighlightBackground': '#2a2e39',
                 'editorCursor.foreground': '#2962ff',

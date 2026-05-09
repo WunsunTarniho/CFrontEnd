@@ -1,453 +1,394 @@
 import {
     getDrawingTools,
-    searchStock,
-    findStock,
     findStockByTicker,
-    bulkSyncDrawingTools,
     getLayouts,
-    saveLayout,
     updateLayout,
-    deleteLayout,
-    touchLayout
+    touchLayout,
+    API_BASE
 } from './service.js';
 import { DEFAULT_WATCHLIST_SYMBOLS } from './constants.js';
 
-export let TF_SUPPORT_MAP = {};
 const historyCache = new Map();
 
-export async function fetchTimeframeConfigs(stockId = null) {
-    try {
-        let url = `${apiBase}/api/v1/market/timeframes`;
-        if (stockId) url += `?id=${stockId}`;
+/**
+ * --------------------------------------------------------------------------
+ * CORE DATA FETCHING
+ * --------------------------------------------------------------------------
+ */
 
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Failed to fetch timeframe configs');
-        const result = await response.json();
+export async function fetchMarketHistory(marketInfo, timeframe, endTime = null, value = null, unit = null) {
+    const symbol = marketInfo.symbol || 'BTCUSDT';
+    const exchange = marketInfo.exchange || 'BINANCE';
+    const isLatest = !endTime;
 
-        if (stockId) {
-            // Returns filtered list for specific ticker
-            return result.data || [];
-        } else {
-            // Returns base map
-            TF_SUPPORT_MAP = result;
-        }
-    } catch (error) {
-        console.error('Error fetching timeframe configs:', error);
-        return stockId ? [] : {};
-    }
-}
+    // Use stored value/unit if not provided (for pagination)
+    if (!value && window.chart?.tfValue) value = window.chart.tfValue;
+    if (!unit && window.chart?.tfUnit) unit = window.chart.tfUnit;
 
-export function getEffectiveExchangeKey(exchange, isFutures) {
-    const normalized = (exchange || 'BINANCE').toUpperCase();
-    if (isFutures && TF_SUPPORT_MAP[`${normalized}_FUTURES`]) {
-        return `${normalized}_FUTURES`;
-    }
-    if (!isFutures && TF_SUPPORT_MAP[`${normalized}_SPOT`]) {
-        return `${normalized}_SPOT`;
-    }
-    return TF_SUPPORT_MAP[normalized] ? normalized : 'BINANCE_SPOT';
-}
+    const cacheKey = `${symbol}:${timeframe}:${exchange}:${endTime || 'latest'}`;
 
-// ── Item C: Data Retrieval Logic ─────────────────────────────────────
-
-// Fetch candles from API via backend proxy
-export async function fetchStockData(stock, timeframe, endDateTs = null) {
-    const ticker = stock.ticker;
-    const cacheKey = `${ticker}:${timeframe}:${stock.market}:${stock.exchange || ''}:${endDateTs || 'latest'}`;
-
-    if (historyCache.has(cacheKey)) {
-        // console.log(`[Cache Hit] Serving ${cacheKey} from memory`);
+    // Cache policy (Daily segments only)
+    if (timeframe === '1d' && !isLatest && historyCache.has(cacheKey)) {
         return historyCache.get(cacheKey);
     }
 
     try {
-        const loading = document.getElementById('loading-indicator');
-        if (loading) loading.style.display = 'block';
+        const params = new URLSearchParams({
+            symbol,
+            exchange,
+            limit: (unit === 't' || unit === 'r') ? 50 : 1000,
+            _: Date.now()
+        });
 
-        let url = `${apiBase}/api/v1/market/history?symbol=${ticker}&timeframe=${timeframe}&market=${stock.market}&exchange=${stock.exchange || ''}&limit=1000`;
-        if (endDateTs) url += `&endDateTs=${endDateTs}`;
+        let url;
+        if (unit === 't') {
+            params.set('ticksPerCandle', value);
+            url = `${API_BASE}/api/v1/market/ticks?${params}`;
+        } else if (unit === 'r') {
+            params.set('rangePerCandle', value);
+            url = `${API_BASE}/api/v1/market/range?${params}`;
+        } else {
+            params.set('timeframe', timeframe);
+            if (endTime) params.set('endTime', endTime);
+            url = `${API_BASE}/api/v1/market/history?${params}`;
+        }
 
         const response = await fetch(url);
-        if (!response.ok) throw new Error(`Backend returned ${response.status}`);
+        if (!response.ok) throw new Error(`History fetch failed: ${response.status}`);
 
         const data = await response.json();
-        
-        // Save to memory cache
-        if (data && data.candles && data.candles.length > 0) {
+        if (timeframe === '1d' && !isLatest && data?.candles?.length > 0) {
             historyCache.set(cacheKey, data);
         }
 
-        return data || { candles: [], meta: { marketStatus: 'REGULAR' } };
+        return data || { candles: [], meta: {} };
     } catch (error) {
-        console.error('Error fetching data from backend:', error);
-        return { candles: [], meta: { marketStatus: 'REGULAR' } };
-    } finally {
-        const loading = document.getElementById('loading-indicator');
-        if (loading) loading.style.display = 'none';
+        console.error('[DataService] History Error:', error);
+        return { candles: [], meta: {} };
     }
 }
 
-export const apiBase = 'http://localhost:5000';
+/**
+ * --------------------------------------------------------------------------
+ * MAIN SESSION INITIALIZATION
+ * --------------------------------------------------------------------------
+ */
 
-export async function loadStockData(layoutId = null, forcedStock = null) {
+export async function initMarketSession(layoutId = null, forcedMarket = null) {
     if (!window.chart) return;
     window.chart.isLoading = true;
+    window.chart.isRestoring = true;
 
-    const layouts = await getLayouts();
-    let activeLayout = layoutId ? layouts.find(l => l.id === layoutId) : (window.chart.currentLayoutId ? layouts.find(l => l.id === window.chart.currentLayoutId) : layouts[0]);
+    try {
+        // 1. Identify which layout and symbol to load
+        const layouts = await getLayouts();
+        const activeLayout = resolveActiveLayout(layouts, layoutId);
+        console.log(`[DataService] determineTargetSymbol start with forced:`, forcedMarket);
+        const { symbol, exchange, originalSymbol, market, type } = determineTargetSymbol(activeLayout, forcedMarket);
+        console.log(`[DataService] Resolved from determineTargetSymbol:`, { symbol, exchange, originalSymbol, market, type });
 
-    if (!activeLayout && layouts.length > 0) activeLayout = layouts[0];
+        // 2. Resolve full market metadata (type, name, etc)
+        const marketData = await resolveMarketMetadata(symbol, exchange, originalSymbol, market, type);
+        console.log(`[DataService] Resolved marketData:`, marketData);
+        const timeframe = resolveTimeframe(activeLayout);
 
-    const searchInput = document.getElementById('stock-search');
-    let stock_id;
-    let selectedExchange = '';
+        console.log(`[DataService] Loading: ${marketData.symbol} @ ${marketData.exchange} [${timeframe}]`, marketData);
 
-    if (forcedStock) {
-        stock_id = forcedStock._id || forcedStock.ticker;
-        selectedExchange = forcedStock.primary_exchange || '';
-    } else if (searchInput && searchInput.dataset.stockId) {
-        stock_id = searchInput.dataset.stockId;
-        selectedExchange = searchInput.dataset.exchange || '';
-        delete searchInput.dataset.stockId;
-        delete searchInput.dataset.exchange;
-    } else if (activeLayout && activeLayout.lastTicker) {
-        stock_id = activeLayout.lastTicker;
-        if (typeof stock_id === 'object' && stock_id !== null) {
-            stock_id = stock_id.ticker || stock_id.symbol || stock_id.id || String(stock_id);
-        }
-    } else {
-        stock_id = window.chart.currentStockId || (DEFAULT_WATCHLIST_SYMBOLS[0] ? DEFAULT_WATCHLIST_SYMBOLS[0].ticker : null);
-    }
+        // 3. Prepare Chart for new data
+        prepareChartForSwitch(marketData);
+        updateMarketUI(marketData.market, marketData.exchange);
 
-    if (!selectedExchange || selectedExchange === 'undefined') {
-        if (activeLayout && activeLayout.lastExchange) {
-            selectedExchange = activeLayout.lastExchange;
-        } else {
-            const market = activeLayout?.lastTickerId?.market || '';
-            if (market.toLowerCase().startsWith('stock') || market === 'commodities') {
-                selectedExchange = 'YAHOO';
-            } else {
-                selectedExchange = 'BINANCE';
+        // 4. Fetch and Load Data
+        console.log(`[DataService] Calling fetchMarketHistory for ${marketData.symbol}...`);
+
+        // One-time parse during restoration to set the initial structured state
+        const match = timeframe.match(/^(\d+)([trsmhdw]|mo)$/);
+        window.chart.tfValue = match ? match[1] : timeframe;
+        window.chart.tfUnit = match ? match[2] : '';
+
+        const history = await fetchMarketHistory(marketData, timeframe);
+        applyDataToChart(marketData, history, timeframe);
+
+        // 5. Restore Session State (Indicators, Drawings, etc)
+        if (activeLayout) {
+            // Note: activeLayout.id might be undefined based on backend response
+            if (activeLayout.id) {
+                touchLayout(activeLayout.id).catch(() => { });
+                window.chart.currentLayoutId = activeLayout.id;
             }
+
+            window.dispatchEvent(new CustomEvent('layout-changed', { detail: { name: activeLayout.name } }));
+
+            // Restore Full Chart State (Colors, Grids, Mode, etc.)
+            if (activeLayout.chartState && window.chart) {
+                window.chart.applyChartState(activeLayout.chartState);
+
+                // Sync UI elements
+                const mode = window.chart.chartMode;
+                if (window.updateChartModeUI) window.updateChartModeUI(mode);
+                if (window.chartSettingsController) window.chartSettingsController.syncInputsWithChart();
+            }
+
+            await restoreDrawingTools(activeLayout.id, marketData.symbol, marketData.exchange, marketData.id);
+            if (window.chart.clearIndicators) window.chart.clearIndicators();
+            await restoreIndicators(activeLayout.indicators);
         }
+    } catch (error) {
+        console.error('[DataService] Critical error during initMarketSession:', error);
+    } finally {
+        window.chart.isRestoring = false;
+        // Ensure a fallback marketData object exists for finalizeSessionLoad if everything crashed
+        const fallbackData = forcedMarket || { symbol: window.chart?.symbol || 'BTCUSDT' };
+        finalizeSessionLoad(fallbackData);
+    }
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * HELPER LOGIC (Private)
+ * --------------------------------------------------------------------------
+ */
+
+function resolveActiveLayout(layouts, requestedId) {
+    if (!layouts || layouts.length === 0) return null;
+    if (requestedId) return layouts.find(l => l.id === requestedId) || layouts[0];
+    if (window.chart?.currentLayoutId) return layouts.find(l => l.id === window.chart.currentLayoutId) || layouts[0];
+    return layouts[0];
+}
+
+function determineTargetSymbol(layout, forced) {
+    const searchInput = document.getElementById('stock-search');
+    const fallback = DEFAULT_WATCHLIST_SYMBOLS[0] || { symbol: 'BTCUSDT', exchange: 'BINANCE' };
+
+    let symbol, exchange, originalSymbol;
+
+    if (forced) {
+        symbol = forced.symbol;
+        exchange = forced.exchange || forced.primary_exchange;
+        originalSymbol = forced.original_symbol;
+    } else if (searchInput?.dataset.symbol) {
+        symbol = searchInput.dataset.symbol;
+        exchange = searchInput.dataset.exchange;
+        originalSymbol = searchInput.dataset.originalSymbol;
+        forced = {
+            symbol,
+            exchange,
+            original_symbol: originalSymbol,
+            market: searchInput.dataset.market,
+            type: searchInput.dataset.type
+        };
+        clearSearchDataset(searchInput);
+    } else if (layout?.lastSymbol) {
+        symbol = layout.lastSymbol;
+        exchange = layout.lastExchange;
+    } else {
+        symbol = window.chart?.symbol || fallback.symbol;
+        exchange = window.chart?.exchange || fallback.exchange;
     }
 
-    if (!stock_id || stock_id === 'undefined') {
-        const fallbackStock = DEFAULT_WATCHLIST_SYMBOLS[0];
-        stock_id = (fallbackStock ? (fallbackStock.id || fallbackStock._id || fallbackStock.ticker) : 'BTCUSDT');
-    }
+    return {
+        symbol: symbol || 'BTCUSDT',
+        exchange: (exchange || 'BINANCE').toUpperCase(),
+        originalSymbol: originalSymbol || symbol,
+        market: forced?.market,
+        type: forced?.type
+    };
+}
 
-    let timeframe = window.chart?.timeframe || document.querySelector('.tf-option.active')?.dataset.tf || '1d';
+async function resolveMarketMetadata(symbol, exchange, originalSymbol, forcedMarket, forcedType) {
+    const response = await findStockByTicker(symbol, exchange);
+    const data = response?.data;
+    return {
+        symbol: data?.symbol || symbol,
+        exchange: exchange,
+        name: data?.name || symbol,
+        market: forcedMarket || data?.market || 'crypto',
+        type: forcedType || data?.type || (symbol.endsWith('.P') ? 'perpetual' : 'spot'),
+        base: data?.base || '',
+        quote: data?.quote || '',
+        original_symbol: data?.originalSymbol || originalSymbol,
+        id: data?.id,
+        tickSize: data?.tickSize || 0
+    };
+}
 
-    const isInitialLoad = !window.chart?.symbol;
-    const isLayoutSwitch = layoutId && layoutId !== window.chart?.currentLayoutId;
+function resolveTimeframe(layout) {
+    let tf = '1d';
+    if (layout?.chartState?.timeframe) tf = layout.chartState.timeframe;
+    if (window.setTfActive) window.setTfActive(tf);
+    return tf;
+}
 
-    if ((isLayoutSwitch || isInitialLoad) && activeLayout?.chartState?.timeframe) {
-        timeframe = activeLayout.chartState.timeframe;
-    }
-
-    if (window.setTfActive) window.setTfActive(timeframe);
-
-    const response = await findStock(stock_id, selectedExchange);
-    let stock = response?.data;
-
-    if (!stock) {
-        const fallbackTicker = (DEFAULT_WATCHLIST_SYMBOLS[0] ? DEFAULT_WATCHLIST_SYMBOLS[0].ticker : 'BTCUSDT');
-        stock = { ticker: fallbackTicker, name: 'Default', market: 'crypto', primary_exchange: 'BINANCE' };
-    }
-
-    const currentIsFutures = stock.ticker?.endsWith('.P') || stock.type === 'FUTURES' || (window.chart && window.chart.type === 'FUTURES');
-    
-    // Fetch ticker-specific supported timeframes (Strict Core Pair rules)
-    const tickerId = stock.id || stock._id || stock.ticker;
-    const supported = await fetchTimeframeConfigs(tickerId);
-
-    // Validate and fallback timeframe if not supported by this ticker
-    if (supported && supported.length > 0 && !supported.includes(timeframe)) {
-        const fallback = supported.includes('1m') ? '1m' : supported[0];
-        timeframe = fallback;
-    }
-
-    updateTimeframeOptions(stock.market || 'crypto', selectedExchange || stock.primary_exchange, currentIsFutures, supported);
-
-    const isSymbolChanged = window.chart.symbol !== stock.ticker;
-    const isExchangeChanged = window.chart.exchange !== selectedExchange;
-
-    if (isInitialLoad || isSymbolChanged || isExchangeChanged) {
-        if (window.chart.symbol) {
-            window.chart.unsubscribe(window.chart.symbol, window.chart.exchange);
-        }
+function prepareChartForSwitch(marketData) {
+    const isNew = window.chart.symbol !== marketData.symbol ||
+        window.chart.exchange !== marketData.exchange ||
+        window.chart.market !== marketData.market ||
+        window.chart.type !== marketData.type;
+    if (isNew && window.chart.symbol) {
+        window.chart.unsubscribe(window.chart.symbol, window.chart.exchange);
         window.chart.clearSymbol();
         window.chart.render();
     }
-
-    const effectiveKeyForSeconds = getEffectiveExchangeKey(selectedExchange, currentIsFutures);
-    const supportsSeconds = TF_SUPPORT_MAP[effectiveKeyForSeconds]?.some(tf => tf.endsWith('s'));
-
-    if ((stock.market === 'stocks' || stock.market === 'commodities' || !supportsSeconds) && timeframe.endsWith('s')) {
-        timeframe = '1m';
-    }
-
-    if (selectedExchange) stock.exchange = selectedExchange;
-
-    const responseData = await fetchStockData(stock, timeframe);
-    const data = responseData.candles || [];
-    const meta = responseData.meta || { marketStatus: 'REGULAR' };
-
-    window.chart.symbol = stock.ticker;
-    window.chart.instrument = stock.name;
-    window.chart.currency = stock.currency ?? (stock.currency ? stock.currency.toUpperCase() : '');
-    window.chart.base_currency_symbol = stock.base_currency_symbol;
-    window.chart.exchange = selectedExchange || stock.exchange || stock.primary_exchange;
-    window.chart.market = stock.asset_type || stock.market;
-    window.chart.asset_type = stock.asset_type || stock.market;
-    window.chart.rawData = data;
-    window.chart.setTimeframe(timeframe);
-
-    if (data.length > 0) {
-        await window.chart.syncWithDatabase();
-    }
-
-    window.chart.marketStatus = meta.marketStatus;
-
-    window.chart.chartMode = 'candle'; // Always default to candle
-
-    window.chart.currentStockId = stock_id;
-    window.chart.drawingTools = [];
-    window.chart.selectedTool = null;
-
-    if (window.sidebarController) {
-        window.sidebarController.currentLayouts = layouts;
-    }
-
-    window.chart.connectWebSocket(stock, DEFAULT_WATCHLIST_SYMBOLS);
-    window.chart.currentStockId = stock.id || stock.ticker;
-
-    await touchLayout(activeLayout.id);
-    window.chart.currentLayoutId = activeLayout.id;
-    window.chart.tickerId = stock.id || stock.ticker;
-
-    window.dispatchEvent(new CustomEvent('layout-changed', { detail: { name: activeLayout.name } }));
-
-    const result = await getDrawingTools({
-        layoutId: activeLayout.id,
-        symbol: stock.ticker,
-        exchange: window.chart.exchange
-    });
-
-    if (result && result.data) {
-        const mainPane = window.chart.panes.find(p => p.id === 'main');
-        result.data.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-
-        for (const d of result.data) {
-            const tool = window.chart.createDrawingTool(d.toolType, d.points, d.style);
-            if (tool) {
-                tool.pane = mainPane;
-                tool.requiredPoints = d.points.length;
-                tool.id = d.id;
-                tool.isHidden = !!d.isHidden;
-                tool.isLocked = !!d.isLocked;
-                if (d.name) tool.name = d.name;
-                window.chart.drawingTools.push(tool);
-            }
-        }
-    }
-
-    if (activeLayout.indicators && activeLayout.indicators.length > 0) {
-        if (window.chart && activeLayout.indicators) {
-            window.chart.isRestoring = true;
-            activeLayout.indicators.forEach(ind => {
-                const doc = ind.indicator; // Access the populated indicator object
-                if (doc && ind.isVisible !== false) {
-                    const script = doc.script || '';
-                    window.chart.addIndicator(doc.name, script, {
-                        ...ind.settings,
-                        indicatorId: doc.id,
-                        isVisible: ind.isVisible
-                    }, true);
-                }
-            });
-            window.chart.isRestoring = false;
-        }
-    }
-
-
-    if (window.setSearchTicker && window.chart.symbol) {
-        window.setSearchTicker(window.chart.symbol);
-    }
-    if (window.dispatchEvent) {
-        window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
-    }
-
-    if (window.chart) window.chart.render();
-    await autoSaveLayoutViewState();
-    if (window.setTfActive) window.setTfActive(timeframe);
-    if (window.chart) window.chart.clearDirtyState();
 }
+
+function applyDataToChart(marketData, history, timeframe) {
+    const candles = history.candles || [];
+
+    window.chart.symbol = marketData.symbol;
+    window.chart.name = marketData.name;
+    window.chart.exchange = marketData.exchange;
+    window.chart.type = marketData.type;
+    window.chart.market = marketData.market;
+    window.chart.base = marketData.base;
+    window.chart.quote = marketData.quote;
+    window.chart.original_symbol = marketData.original_symbol;
+    window.chart.symbolId = marketData.id;
+    window.chart.tickSize = marketData.tickSize || 0;
+    window.chart.rawData = candles;
+    window.chart.setTimeframe(timeframe);
+    window.chart.marketStatus = history.meta?.marketStatus || 'REGULAR';
+
+    if (candles.length > 0) {
+        window.chart.syncWithDatabase().catch(() => { });
+    }
+
+    window.chart.connectWebSocket();
+}
+
+function finalizeSessionLoad(marketData) {
+    if (window.setSearchTicker) window.setSearchTicker(marketData.symbol);
+    window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
+    window.chart.isLoading = false;
+    window.chart.render();
+    window.chart.clearDirtyState();
+    autoSaveLayoutViewState();
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * UTILITIES & RE-EXPORTS
+ * --------------------------------------------------------------------------
+ */
 
 export async function saveCurrentLayout() {
-    if (!window.chart?.currentLayoutId) return;
-
+    if (!window.chart?.currentLayoutId || window.chart.isRestoring) return;
     try {
-        const layouts = await getLayouts();
-        const activeLayout = layouts.find(l => l.id === window.chart.currentLayoutId);
-        if (!activeLayout) return;
-
-        const currentTf = window.chart.timeframe;
-
-        const indicators = (window.chart.indicators || []).map(ind => ({
-            indicatorId: ind.indicatorId || ind.id,
-            isVisible: ind.isVisible !== false,
-            settings: {
-                position: ind.position,
-                collapsed: ind.collapsed,
-                ...(ind.settings || {})
-            }
-        }));
-
+        const fullState = window.chart.getChartState();
         await updateLayout(window.chart.currentLayoutId, {
-            chartState: {
-                timeframe: currentTf,
-                chartMode: window.chart.chartMode || 'candle'
-            },
-            indicators,
-            lastTicker: window.chart.symbol,
-            lastExchange: window.chart.exchange
+            chartState: fullState,
+            lastSymbol: window.chart.symbol,
+            lastExchange: window.chart.exchange,
+            lastSymbolId: window.chart.symbolId,
+            indicators: (window.chart.indicators || []).map(ind => ({
+                indicatorId: ind.indicatorId || (ind.id?.startsWith('ind_') ? null : ind.id),
+                settings: {
+                    ...(ind.settings || {}),
+                    collapsed: !!ind.collapsed,
+                    position: ind.position || 'below',
+                    orderIndex: window.chart.paneOrder ? window.chart.paneOrder.indexOf(ind.id) : -1,
+                    paneShare: window.chart.paneProportions[ind.id] || 0.25
+                }
+            }))
         });
-        window.chart.clearDirtyState();
-        console.log(`Layout saved.`);
-    } catch (error) {
-        console.error('Failed to save layout:', error);
+        if (window.chart.clearDirtyState) {
+            window.chart.clearDirtyState();
+        }
+        console.log('[LayoutSave] Success, dirty state cleared.');
+    } catch (e) {
+        console.error('[AutoSave] Failed:', e);
     }
 }
 
-export async function autoSaveLayoutViewState() {
-    if (!window.chart?.currentLayoutId || !window.chart.symbol) return;
+export const autoSaveLayoutViewState = () => saveCurrentLayout();
+window.autoSaveLayoutViewState = autoSaveLayoutViewState;
 
-    try {
-        const currentTf = window.chart.timeframe;
-
-        const indicators = (window.chart.indicators || []).map(ind => ({
-            indicatorId: ind.indicatorId || ind.id,
-            isVisible: ind.isVisible !== false,
-            settings: {
-                position: ind.position,
-                collapsed: ind.collapsed,
-                ...(ind.settings || {})
-            }
-        }));
-
-        await updateLayout(window.chart.currentLayoutId, {
-            chartState: {
-                timeframe: currentTf,
-                chartMode: window.chart.chartMode || 'candle'
-            },
-            indicators,
-            lastTicker: window.chart.symbol,
-            lastExchange: window.chart.exchange
-        });
-    } catch (error) {
-        console.warn('[AutoSave] Failed:', error);
-    }
-}
-
-export async function handleTimeframeChange(timeframe) {
-    if (!window.chart) return;
-
+export async function changeTimeframe(timeframe, value = null, unit = null) {
+    if (!window.chart?.symbol) return;
     if (window.setTfActive) window.setTfActive(timeframe);
 
-    const ticker = window.chart.symbol;
-    if (!ticker) {
-        window.chart.setTimeframe(timeframe);
-        return;
-    }
+    // Persist structured state
+    window.chart.tfValue = value;
+    window.chart.tfUnit = unit;
 
-    const exchange = window.chart.exchange || 'BINANCE';
-    const market = window.chart.market || 'crypto';
+    window.chart.isLoading = true;
+    const history = await fetchMarketHistory(window.chart, timeframe, null, value, unit);
+    window.chart.rawData = history.candles || [];
+    window.chart.marketStatus = history.meta?.marketStatus || 'REGULAR';
+    if (history.meta?.tickSize) window.chart.tickSize = history.meta.tickSize;
+    window.chart.setTimeframe(timeframe);
 
-    let effectiveTf = timeframe;
-    const effectiveKeyForTf = getEffectiveExchangeKey(exchange, window.chart?.type === 'FUTURES');
-    const supportsSeconds = TF_SUPPORT_MAP[effectiveKeyForTf]?.some(tf => tf.endsWith('s'));
+    if (window.chart.rawData.length > 0 && window.chart.fullFit) window.chart.fullFit();
+    window.chart.isLoading = false;
+    window.chart.render();
+    autoSaveLayoutViewState();
+}
 
-    if ((market === 'stocks' || market === 'commodities' || !supportsSeconds) && timeframe.endsWith('s')) {
-        effectiveTf = '1m';
-    }
+async function restoreDrawingTools(layoutId, symbol, exchange, symbolId) {
+    if (!layoutId) return;
+    const result = await getDrawingTools({ layoutId, symbol, exchange, symbolId });
+    if (!result?.data) return;
 
-    try {
-        const responseData = await fetchStockData({ ticker, market, exchange }, effectiveTf);
-        const data = responseData.candles || [];
-        const meta = responseData.meta || { marketStatus: 'REGULAR' };
+    const mainPane = window.chart.panes.find(p => p.id === 'main');
+    window.chart.drawingTools = [];
 
-        window.chart.rawData = data;
-        window.chart.marketStatus = meta.marketStatus;
-        window.chart.setTimeframe(timeframe);
-
-        if (data && data.length > 0) {
-            // NO RESTORE POSITION - FULL FIT INSTEAD
-            if (typeof window.chart.fullFit === 'function') {
-                window.chart.fullFit();
-            } else if (typeof window.chart.goToLastCandle === 'function') {
-                window.chart.goToLastCandle();
-            }
+    result.data.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)).forEach(d => {
+        const tool = window.chart.createDrawingTool(d.toolType, d.points, d.style);
+        if (tool) {
+            Object.assign(tool, { pane: mainPane, id: d.id, isHidden: !!d.isHidden, isLocked: !!d.isLocked });
+            window.chart.drawingTools.push(tool);
         }
-        window.chart.render();
-        if (data && data.length > 0) {
-            await autoSaveLayoutViewState();
+    });
+}
+
+async function restoreIndicators(indicators) {
+    if (!indicators?.length) return;
+    window.chart.isRestoring = true;
+
+    // Sort by orderIndex to preserve sequence during restoration
+    const sortedIndicators = [...indicators].sort((a, b) => {
+        const orderA = a.settings?.orderIndex ?? 999;
+        const orderB = b.settings?.orderIndex ?? 999;
+        return orderA - orderB;
+    });
+
+    sortedIndicators.forEach(ind => {
+        if (ind.indicator) {
+            window.chart.addIndicator(ind.indicator.name, ind.indicator.script || '', {
+                ...ind.settings,
+                indicatorId: ind.indicator.id
+            }, true);
         }
-    } catch (error) {
-        console.error(`[handleTimeframeChange] Fetch failed:`, error);
-        window.chart.setTimeframe(timeframe);
+    });
+    // Note: isRestoring is now managed by initMarketSession for better coverage
+    if (window.chart.calculateIndicators) {
+        window.chart.indicatorsDirty = true;
+        window.chart.calculateIndicators(false);
     }
 }
 
-export async function setDateRangeAndInterval(rangeLabel, defaultTimeframe, btnElement) {
-    document.querySelectorAll('.date-ranges button').forEach(btn => btn.classList.remove('active'));
-    if (btnElement) btnElement.classList.add('active');
-    if (window.setTfActive) window.setTfActive(defaultTimeframe);
-    await loadStockData();
-    if (window.chart) {
-        let chartRange = rangeLabel.toLowerCase();
-        window.chart.setDateRange(chartRange === 'all' ? 'all' : chartRange);
-    }
-}
+export function updateMarketUI(market, exchange) {
+    const isCrypto = market === 'crypto' || !market;
 
-export function updateTimeframeOptions(market, exchange = 'BINANCE', isFutures = false, supportedOverride = null) {
+    // Toggle seconds visibility based on market type
+    const secondsDisplay = isCrypto ? 'grid' : 'none';
+    const secondsLabelDisplay = isCrypto ? 'block' : 'none';
+
     const secondsLabel = document.getElementById('tf-seconds-label');
     const secondsGroup = document.getElementById('tf-seconds-group');
 
-    if (!secondsLabel || !secondsGroup) return;
+    if (secondsLabel) secondsLabel.style.display = secondsLabelDisplay;
+    if (secondsGroup) secondsGroup.style.display = secondsDisplay;
 
-    const effectiveExchange = getEffectiveExchangeKey(exchange, isFutures);
-    const supported = supportedOverride || TF_SUPPORT_MAP[effectiveExchange] || [];
-    
-    const supportsSeconds = supported.some(tf => tf.endsWith('s'));
-    const shouldHideSeconds = (market === 'stocks' || market === 'commodities' || !supportsSeconds);
-
-    if (shouldHideSeconds) {
-        secondsLabel.style.display = 'none';
-        secondsGroup.style.display = 'none';
-    } else {
-        secondsLabel.style.display = 'block';
-        secondsGroup.style.display = 'grid';
-    }
-
-    document.querySelectorAll('.tf-option').forEach(opt => {
-        const tf = opt.dataset.tf;
-        // If we have a specific list, hide everything not in it
-        if (supported.length > 0 && !supported.includes(tf)) {
-            opt.style.display = 'none';
-        } else {
-            opt.style.display = 'flex';
-        }
+    // Reset all options to their default flex display
+    document.querySelectorAll('.tf-option').forEach(el => {
+        el.style.display = 'flex';
     });
+}
 
-    document.querySelectorAll('.tf-popup > .tf-group-label').forEach(label => {
-        if (label.id === 'tf-seconds-label') return;
-        const nextGroup = label.nextElementSibling;
-        if (nextGroup && nextGroup.classList.contains('tf-group')) {
-            const hasVisible = Array.from(nextGroup.children).some(child => child.style.display !== 'none');
-            label.style.display = hasVisible ? 'block' : 'none';
-            nextGroup.style.display = hasVisible ? 'grid' : 'none';
-        }
-    });
+
+
+function clearSearchDataset(el) {
+    delete el.dataset.symbol;
+    delete el.dataset.exchange;
+    delete el.dataset.originalSymbol;
 }

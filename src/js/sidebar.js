@@ -1,8 +1,8 @@
 import * as Icons from './icons.js';
 import { getLayouts, saveLayout, updateLayout, deleteLayout, touchLayout } from './service.js';
-import { fetchStockData, loadStockData, saveCurrentLayout } from './data-service.js';
+import { fetchMarketHistory, initMarketSession, saveCurrentLayout } from './data-service.js';
 import { DEFAULT_WATCHLIST_SYMBOLS } from './constants.js';
-import { getTickerLogo, extractSymbol } from './utils.js';
+import { getTickerLogo } from './utils.js';
 
 export class SidebarController {
     constructor() {
@@ -83,8 +83,8 @@ export class SidebarController {
 
         // Listen for real-time ticker updates from Chartify
         window.addEventListener('chartify:ticker-update', (e) => {
-            const { symbol, data, exchange } = e.detail;
-            this.handleTickerUpdate(symbol, data, exchange);
+            const { symbol, data, exchange, precision } = e.detail;
+            this.handleTickerUpdate(symbol, data, exchange, precision);
         });
 
         // Listen for real-time individual trades for volume accumulation
@@ -99,6 +99,11 @@ export class SidebarController {
             this.handleOrderbookUpdate(symbol, exchange, type, bids, asks);
         });
 
+        // Listen for orderbook clearing (symbol change)
+        window.addEventListener('chartify:clear-orderbook', () => {
+            this.clearOrderbook();
+        });
+
         // Listen for when chart loads new data (e.g. via search modal)
         window.addEventListener('chartify:data-loaded', (e) => {
             const chart = e.detail.chart;
@@ -106,12 +111,12 @@ export class SidebarController {
                 // Pass full info to sync sidebar UI correctly
                 this.selectSymbol({
                     symbol: chart.symbol,
-                    name: chart.instrument,
+                    name: chart.name,
                     market: chart.market,
                     exchange: chart.exchange,
                     currency: chart.currency,
-                    base_currency_symbol: chart.base_currency_symbol,
-                    asset_type: chart.asset_type
+                    base: chart.base,
+                    type: chart.type
                 }, null, true);
 
                 // Sync Orderbook Settings from Layout ChartState
@@ -272,37 +277,34 @@ export class SidebarController {
     handleTradeUpdate(symbol, exchange, trades) {
         if (!Array.isArray(trades)) return;
 
-        const detailSymbol = document.getElementById('detail-symbol');
-        // Normalize: remove delimiters AND .P suffix for comparison if needed, 
-        // but the most reliable way is exact match of processed tickers.
-        const currentSelected = (detailSymbol ? detailSymbol.textContent : '').toUpperCase();
-        const incomingSymbol = (symbol || '').toUpperCase();
-        const currentExchange = (window.chart?.exchange || '').toUpperCase();
-        const incomingExchange = (exchange || '').toUpperCase();
+        const volumeEl = document.getElementById('detail-volume');
+        if (volumeEl) {
+            // Accumulate volume from this batch of trades
+            const batchVol = trades.reduce((sum, t) => sum + (t.volume || 0), 0);
+            this.todayVolume += batchVol;
 
-        if (detailSymbol && (currentSelected === incomingSymbol || currentSelected.replace(/[/_]/g, '') === incomingSymbol.replace(/[/_]/g, '')) &&
-            (!currentExchange || incomingExchange === currentExchange)) {
-
-            const volumeEl = document.getElementById('detail-volume');
-            if (volumeEl) {
-                // Accumulate volume from this batch of trades
-                const batchVol = trades.reduce((sum, t) => sum + (t.volume || 0), 0);
-                this.todayVolume += batchVol;
-
-                // Throttled UI Update: Only update DOM if it hasn't been updated in the last 100ms
-                const now = Date.now();
-                if (!this._lastVolumeUiUpdate || now - this._lastVolumeUiUpdate > 100) {
-                    volumeEl.textContent = this.formatNumber(this.todayVolume);
-                    this._lastVolumeUiUpdate = now;
-                }
+            // Throttled UI Update: Only update DOM if it hasn't been updated in the last 100ms
+            const now = Date.now();
+            if (!this._lastVolumeUiUpdate || now - this._lastVolumeUiUpdate > 100) {
+                volumeEl.textContent = this.formatNumber(this.todayVolume);
+                this._lastVolumeUiUpdate = now;
             }
         }
+    }
+
+    clearOrderbook() {
+        if (this.orderbookState) {
+            this.orderbookState.bids.clear();
+            this.orderbookState.asks.clear();
+        }
+        this._lastObSymbol = null;
+        this.renderOrderbook();
     }
 
     handleOrderbookUpdate(symbol, exchange, type, bids, asks) {
         // --- DYNAMIC PRECISION DETECTION ---
         if (type === 'snapshot' && bids && bids.length > 0) {
-            const basePrecision = this.detectBasePrecision(bids, asks);
+            const basePrecision = window.chart.tickSize;
             const currentSymbol = (symbol || '').toUpperCase();
 
             // Re-build options if symbol changed or base precision is different
@@ -315,18 +317,6 @@ export class SidebarController {
                 this.orderbookSettings.precision = basePrecision;
             }
         }
-        const detailSymbol = document.getElementById('detail-symbol');
-        const currentSelected = (detailSymbol ? detailSymbol.textContent : '').replace(/[/_-]/g, '').toUpperCase();
-        const incomingSymbol = (symbol || '').replace(/[/_-]/g, '').toUpperCase();
-
-        // console.log(`[Sidebar] Orderbook Event: ${incomingSymbol} (Target: ${currentSelected}) Type: ${type}`);
-
-        if (!detailSymbol || currentSelected !== incomingSymbol) return;
-
-        // Verify active chart exchange matches
-        const currentExchange = (window.chart?.exchange || '').toUpperCase();
-        const incomingExchange = (exchange || '').toUpperCase();
-        if (currentExchange && incomingExchange !== currentExchange) return;
 
         if (!this.orderbookState) {
             this.orderbookState = { bids: new Map(), asks: new Map() };
@@ -338,19 +328,24 @@ export class SidebarController {
         }
 
         // Apply deltas
+        const normalize = (p) => parseFloat(parseFloat(p).toFixed(8));
+
         if (bids && Array.isArray(bids)) {
             bids.forEach(b => {
-                const price = typeof b[0] === 'string' ? parseFloat(b[0]) : b[0];
-                const qty = typeof b[1] === 'string' ? parseFloat(b[1]) : b[1];
-                if (qty === 0) this.orderbookState.bids.delete(price);
+                const price = normalize(b[0]);
+                const qty = parseFloat(b[1]);
+
+                if (qty === 0) {
+                    this.orderbookState.bids.delete(price)
+                }
                 else this.orderbookState.bids.set(price, qty);
             });
         }
 
         if (asks && Array.isArray(asks)) {
             asks.forEach(a => {
-                const price = typeof a[0] === 'string' ? parseFloat(a[0]) : a[0];
-                const qty = typeof a[1] === 'string' ? parseFloat(a[1]) : a[1];
+                const price = normalize(a[0]);
+                const qty = parseFloat(a[1]);
                 if (qty === 0) this.orderbookState.asks.delete(price);
                 else this.orderbookState.asks.set(price, qty);
             });
@@ -366,24 +361,6 @@ export class SidebarController {
         }
     }
 
-    detectBasePrecision(bids, asks) {
-        let maxDecimals = 0;
-        const sample = [...(bids || []).slice(0, 10), ...(asks || []).slice(0, 10)];
-
-        sample.forEach(entry => {
-            const priceStr = entry[0].toString();
-            if (priceStr.includes('.')) {
-                // Ignore extremely small differences that represent jitter
-                const parts = priceStr.split('.');
-                const decimals = parts[1].length;
-                if (decimals > maxDecimals && decimals < 10) maxDecimals = decimals;
-            }
-        });
-
-        // Use a clean power of 10
-        return Number(Math.pow(10, -maxDecimals).toFixed(maxDecimals));
-    }
-
     updatePrecisionSelect(base) {
         const select = document.getElementById('orderbook-precision-select');
         if (!select) return;
@@ -391,8 +368,8 @@ export class SidebarController {
         // Clear existing
         select.innerHTML = '';
 
-        // Generate 4 levels: 1 finer, 1 native, 2 coarser
-        const levels = [0.1, 1, 10, 100];
+        // Generate 4 levels: 1 native, 3 coarser
+        const levels = [1, 10, 100, 1000];
 
         levels.forEach(multiplier => {
             // Round to avoid floating point jitter (e.g. 0.1 * 0.1 = 0.010000000000000002)
@@ -422,18 +399,19 @@ export class SidebarController {
     renderOrderbook() {
         if (!this.orderbookState) return;
 
-        const maxDisplayLevels = 10;
+        const maxDisplayLevels = 15;
         const precision = this.orderbookSettings.precision;
 
-        // --- PRECISE AGGREGATION LOGIC ---
         const aggregate = (entries, isBid) => {
             const map = new Map();
             entries.forEach(([price, qty]) => {
-                // Grouping: Bids round down (lower price), Asks round up (higher price) to maintain spread gap
+                const p = parseFloat(price);
                 const factor = 1 / precision;
+
+                // Grouping: Bids round down, Asks round up
                 const roundedPrice = isBid
-                    ? Math.floor(price * factor) / factor
-                    : Math.ceil(price * factor) / factor;
+                    ? Math.floor(p * factor) / factor
+                    : Math.ceil(p * factor) / factor;
 
                 map.set(roundedPrice, (map.get(roundedPrice) || 0) + parseFloat(qty));
             });
@@ -449,15 +427,12 @@ export class SidebarController {
         bidEntries = bidEntries.slice(0, maxDisplayLevels);
         askEntries = askEntries.slice(0, maxDisplayLevels);
 
+        const decimals = Math.max(0, -Math.round(Math.log10(this.orderbookSettings.precision)));
         const formatDec = (v) => {
             if (v === 0) return '0';
-            if (v >= 1000000) return (v / 1000000).toFixed(3) + 'M';
-            if (v >= 1000) return Math.floor(v).toLocaleString();
-            if (v >= 1) return v.toFixed(3);
-            if (v >= 0.0001) return v.toFixed(4);
-            const s = v.toFixed(12);
-            const match = s.match(/0\.0*[1-9]/);
-            return match ? match[0] : v.toString();
+            if (v >= 1000000) return (v / 1000000).toFixed(Math.min(2, decimals)) + 'M';
+            if (v >= 1000) return (v / 1000).toFixed(Math.min(2, decimals)) + 'k';
+            return v.toFixed(4);
         };
 
         let cumulativeBid = 0;
@@ -602,15 +577,11 @@ export class SidebarController {
             const precision = this.orderbookSettings?.precision || 0.1;
             const precisionDecimals = precision < 1 ? Math.abs(Math.floor(Math.log10(precision))) : 0;
 
-            let spreadDecimals = 2;
-            if (currentPrice < 1) {
-                spreadDecimals = Math.max(3, precisionDecimals);
-            }
-
             const formattedSpread = currentPrice.toLocaleString(undefined, {
-                minimumFractionDigits: spreadDecimals,
-                maximumFractionDigits: spreadDecimals
+                minimumFractionDigits: precisionDecimals,
+                maximumFractionDigits: precisionDecimals
             });
+
             this.updateRollingPrice(spreadEl, formattedSpread, 'spread');
 
             if (currentPrice >= bestRawAsk) {
@@ -643,47 +614,37 @@ export class SidebarController {
         });
     }
 
-    handleTickerUpdate(symbol, data, exchange) {
-        // Detailed Panel Refresh (Top Right)
-        const detailSymbol = document.getElementById('detail-symbol');
-        const currentSelected = (detailSymbol ? detailSymbol.textContent : '').replace(/[/_-]/g, '').toUpperCase();
-        const incomingSymbol = (symbol || '').replace(/[/_-]/g, '').toUpperCase();
+    handleTickerUpdate(symbol, data, exchange, precision) {
+        const price = parseFloat(data.price);
+        const priceEl = document.getElementById('detail-price');
+        const changeAbsEl = document.getElementById('detail-change-abs');
+        const changePctEl = document.getElementById('detail-change-pct');
 
-        // Verify that this update matches our ACTIVE chart's ticker AND exchange
-        const currentExchange = (window.chart?.exchange || '').toUpperCase();
-        const incomingExchange = (exchange || data?.exchange || '').toUpperCase();
-
-        if (detailSymbol && currentSelected === incomingSymbol &&
-            (!currentExchange || incomingExchange === currentExchange)) {
-            const priceEl = document.getElementById('detail-price');
-            const changeAbsEl = document.getElementById('detail-change-abs');
-            const changePctEl = document.getElementById('detail-change-pct');
-            const volumeEl = document.getElementById('detail-volume');
-
-            if (priceEl) {
-                // Tick-by-tick coloring
-                if (this.lastDetailedPrice !== null && data.price !== this.lastDetailedPrice) {
-                    priceEl.className = data.price > this.lastDetailedPrice ? 'change-up' : 'change-down';
-                }
-                const decimals = data.price < 1 ? 6 : 2;
-                const formattedPrice = data.price.toLocaleString(undefined, {
-                    minimumFractionDigits: decimals,
-                    maximumFractionDigits: decimals
-                });
-                this.updateRollingPrice(priceEl, formattedPrice);
-                this.lastDetailedPrice = data.price;
+        if (priceEl && !isNaN(price)) {
+            // 1. Update Detailed Price (Top Right)
+            const prevPrice = this.lastDetailedPrice;
+            if (prevPrice !== null && price !== prevPrice) {
+                priceEl.className = `detail-price-value ${price > prevPrice ? 'change-up' : 'change-down'}`;
             }
+            const decimals = precision !== undefined ? precision : 2;
+            const formattedPrice = price.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+            if (typeof this.updateRollingPrice === 'function') {
+                this.updateRollingPrice(priceEl, formattedPrice);
+            } else {
+                priceEl.textContent = formattedPrice;
+            }
+            this.lastDetailedPrice = price;
 
-            if (this.sessionOpenPrice) {
-                const diff = data.price - this.sessionOpenPrice;
-                const pct = (diff / this.sessionOpenPrice) * 100;
+            // 2. Session change based on today's open price
+            const open = parseFloat(this.sessionOpenPrice);
+
+            if (!isNaN(price) && !isNaN(open) && open !== 0) {
+                const diff = price - open;
+                const pct = (diff / open) * 100;
                 const sign = diff >= 0 ? '+' : '';
                 const sessionColorClass = diff >= 0 ? 'change-up' : 'change-down';
 
-                // Note: priceEl class is handled by tick logic above, 
-                // but we keep change labels on session-based coloring
                 if (changeAbsEl) {
-                    const decimals = data.price < 1 ? 6 : 2;
                     changeAbsEl.textContent = `${sign}${diff.toFixed(decimals)}`;
                     changeAbsEl.className = sessionColorClass;
                 }
@@ -692,114 +653,93 @@ export class SidebarController {
                     changePctEl.className = sessionColorClass;
                 }
             } else {
-                // Fallback to 24h data if sessionOpen is not yet available
-                if (data.change !== undefined && data.changePercent !== undefined) {
-                    const colorClass = data.change >= 0 ? 'change-up' : 'change-down';
+                // Fallback to 24h data if sessionOpen is not yet available or valid
+                const chg = parseFloat(data.change);
+                const chgPct = parseFloat(data.changePercent);
+
+                if (!isNaN(chg) && !isNaN(chgPct)) {
+                    const colorClass = chg >= 0 ? 'change-up' : 'change-down';
                     if (changeAbsEl) {
-                        const sign = data.change >= 0 ? '+' : '';
-                        const decimals = data.price < 1 ? 6 : 2;
-                        changeAbsEl.textContent = `${sign}${data.change.toFixed(decimals)}`;
+                        const sign = chg >= 0 ? '+' : '';
+                        changeAbsEl.textContent = `${sign}${chg.toFixed(decimals)}`;
                         changeAbsEl.className = colorClass;
                     }
                     if (changePctEl) {
-                        const sign = data.changePercent >= 0 ? '+' : '';
-                        changePctEl.textContent = `${sign}${data.changePercent.toFixed(2)}%`;
+                        const sign = chgPct >= 0 ? '+' : '';
+                        changePctEl.textContent = `${sign}${chgPct.toFixed(2)}%`;
                         changePctEl.className = colorClass;
                     }
-                } else {
-                    if (changeAbsEl) changeAbsEl.textContent = '...';
-                    if (changePctEl) changePctEl.textContent = '...';
                 }
             }
 
-            // if (volumeEl) {
-            //     // DISABLED: Stop using 24h rolling volume from ticker to avoid "shifting" Today's Volume
-            //     // volumeEl.textContent = this.formatNumber(data.volume);
-            // }
-
-            // Real-time Seasonals Sync
+            // 3. Real-time Seasonals Sync
             const now = Date.now();
             if (now - this.lastSeasonalSyncTime > 1500) {
                 const currentYear = new Date().getUTCFullYear();
                 let updated = false;
 
-                // 1. Update Sidebar Seasonals
-                if (this.seasonalData && this.sidebarYearStartPrice > 0) {
-                    // Match check to prevent -99% bug during transition
-                    const detailSymbol = document.getElementById('detail-symbol');
-                    const sidebarSymbol = (detailSymbol ? detailSymbol.textContent : '').replace(/[/_-]/g, '').toUpperCase();
-                    if (incomingSymbol === sidebarSymbol) {
-                        const currentYearResults = this.seasonalData[currentYear];
-                        if (currentYearResults && currentYearResults.data) {
-                            const sData = currentYearResults.data;
-                            if (sData.length > 0) {
-                                const lastP = sData[sData.length - 1];
-                                const doy = this.getSeasonalDayIndex(new Date(now), currentYear);
-                                const pct = ((data.price - this.sidebarYearStartPrice) / this.sidebarYearStartPrice) * 100;
-                                const points = data.price - this.sidebarYearStartPrice;
-                                const newPoint = { day: doy, percentage: pct, regular: points };
+                // Sidebar Seasonals
+                if (this.seasonalData) {
+                    const currentYearResults = this.seasonalData[currentYear];
+                    const sPrice = parseFloat(this.sidebarYearStartPrice);
+                    if (currentYearResults && currentYearResults.data && !isNaN(sPrice) && sPrice > 0) {
+                        const sData = currentYearResults.data;
+                        if (sData.length > 0) {
+                            const lastP = sData[sData.length - 1];
+                            const doy = this.getSeasonalDayIndex(new Date(now), currentYear);
+                            const pct = ((price - sPrice) / sPrice) * 100;
+                            const points = price - sPrice;
+                            const newPoint = { day: doy, percentage: pct, regular: points };
 
-                                if (doy > lastP.day) {
-                                    // Fill any gaps (e.g. over weekends) to ensure "one day one point"
-                                    for (let d = lastP.day + 1; d <= doy; d++) {
-                                        if (d === doy) {
-                                            sData.push(newPoint);
-                                        } else {
-                                            // Carry over last point
-                                            sData.push({ ...lastP, day: d });
-                                        }
-                                    }
-                                } else if (doy === lastP.day) {
-                                    sData[sData.length - 1] = newPoint;
+                            if (doy > lastP.day) {
+                                for (let d = lastP.day + 1; d <= doy; d++) {
+                                    sData.push(d === doy ? newPoint : { ...lastP, day: d });
                                 }
-                                this.renderSeasonalsChart(this.seasonalData, this.seasonalColors);
-                                updated = true;
+                            } else if (doy === lastP.day) {
+                                sData[sData.length - 1] = newPoint;
                             }
-                        }
-                    }
-
-                    // 2. Update Full Seasonals
-                    if (this.fullSeasonalsResults && this.fullYearStartPrice > 0) {
-                        const detailSymbol = document.getElementById('detail-symbol');
-                        const sidebarSymbol = (detailSymbol ? detailSymbol.textContent : '').replace(/[/_-]/g, '').toUpperCase();
-
-                        if (incomingSymbol === sidebarSymbol && this.fullSeasonalsResults[currentYear]) {
-                            const fData = this.fullSeasonalsResults[currentYear].data;
-                            if (fData.length > 0) {
-                                const doy = this.getSeasonalDayIndex(new Date(now), currentYear);
-                                const pct = ((data.price - this.fullYearStartPrice) / this.fullYearStartPrice) * 100;
-                                const points = data.price - this.fullYearStartPrice; // This is for sidebar if needed
-                                const lastP = fData[fData.length - 1];
-                                const newPoint = {
-                                    day: doy,
-                                    percentage: pct,
-                                    regular: data.price
-                                };
-                                if (doy > lastP.day) {
-                                    fData.push(newPoint);
-                                } else {
-                                    fData[fData.length - 1] = newPoint;
-                                }
-                                this.renderFullSeasonalsChart(this.fullSeasonalsResults, this.currentStartYear, this.currentEndYear);
-                                updated = true;
-                            }
-                        }
-                    }
-
-                    if (updated) {
-                        this.lastSeasonalSyncTime = now;
-                        // If table is visible, refresh it too
-                        const tableWrapper = document.getElementById('seasonals-full-table');
-                        if (tableWrapper && tableWrapper.style.display === 'block') {
-                            this.renderSeasonalTable(this.fullSeasonalsResults);
+                            this.renderSeasonalsChart(this.seasonalData, this.seasonalColors);
+                            updated = true;
                         }
                     }
                 }
 
-                // 3. Update Real-time Performance Metrics (Throttled 1s)
-                if (this.performanceBasePrices && now - this.lastPerformanceSyncTime > 1000) {
-                    Object.entries(this.performanceBasePrices).forEach(([key, startPrice]) => {
-                        const pctChange = ((data.price - startPrice) / startPrice) * 100;
+                // Full Seasonals (if modal is open)
+                if (this.fullSeasonalsResults) {
+                    const fStartP = parseFloat(this.fullYearStartPrice);
+                    if (this.fullSeasonalsResults[currentYear] && !isNaN(fStartP) && fStartP > 0) {
+                        const fData = this.fullSeasonalsResults[currentYear].data;
+                        if (fData.length > 0) {
+                            const doy = this.getSeasonalDayIndex(new Date(now), currentYear);
+                            const pct = ((price - fStartP) / fStartP) * 100;
+                            const lastP = fData[fData.length - 1];
+                            const newPoint = { day: doy, percentage: pct, regular: price };
+
+                            if (doy > lastP.day) fData.push(newPoint);
+                            else fData[fData.length - 1] = newPoint;
+
+                            this.renderFullSeasonalsChart(this.fullSeasonalsResults, this.currentStartYear, this.currentEndYear);
+                            updated = true;
+                        }
+                    }
+                }
+
+                if (updated) {
+                    this.lastSeasonalSyncTime = now;
+                    // If table is visible, refresh it too
+                    const tableWrapper = document.getElementById('seasonals-full-table');
+                    if (tableWrapper && tableWrapper.style.display === 'block') {
+                        this.renderSeasonalTable(this.fullSeasonalsResults);
+                    }
+                }
+            }
+
+            // 4. Update Real-time Performance Metrics (Throttled 1s)
+            if (this.performanceBasePrices && now - this.lastPerformanceSyncTime > 1000) {
+                Object.entries(this.performanceBasePrices).forEach(([key, startPrice]) => {
+                    const sPrice = parseFloat(startPrice);
+                    if (!isNaN(sPrice) && sPrice !== 0) {
+                        const pctChange = ((price - sPrice) / sPrice) * 100;
                         const el = document.getElementById(`perf-${key}`);
                         const box = document.getElementById(`perf-box-${key}`);
                         if (el) {
@@ -809,43 +749,10 @@ export class SidebarController {
                         if (box) {
                             box.className = `perf-box ${pctChange >= 0 ? 'bg-up' : 'bg-down'}`;
                         }
-                    });
-                    this.lastPerformanceSyncTime = now;
-                }
+                    }
+                });
+                this.lastPerformanceSyncTime = now;
             }
-
-            // Also update watchlist items if present
-            const watchlistItems = document.querySelectorAll('.watchlist-item');
-            const normalizedIncoming = incomingSymbol.replace(/[/_-]/g, '').toUpperCase();
-
-            watchlistItems.forEach(item => {
-                const itemSymbol = (item.dataset.symbol || '').replace(/[/_-]/g, '').toUpperCase();
-                if (itemSymbol === normalizedIncoming) {
-                    const priceEl = item.querySelector('.symbol-price');
-                    const changeEl = item.querySelector('.symbol-change');
-                    if (priceEl) {
-                        const prevPrice = parseFloat(priceEl.textContent.replace(/,/g, ''));
-                        if (!isNaN(prevPrice) && data.price !== prevPrice) {
-                            priceEl.className = `symbol-price ${data.price > prevPrice ? 'change-up' : 'change-down'}`;
-                        }
-                        priceEl.textContent = data.price.toLocaleString();
-                    }
-                    if (changeEl) {
-                        // Use stored prevClose for correct % (not Gate.io's raw changePercent)
-                        const normalizedSym = incomingSymbol.toUpperCase();
-                        const prevClose = this.watchlistPrevClose[normalizedSym];
-                        if (prevClose) {
-                            const pct = ((data.price - prevClose) / prevClose) * 100;
-                            changeEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
-                            changeEl.className = `symbol-change ${pct >= 0 ? 'change-up' : 'change-down'}`;
-                        } else {
-                            // Fallback to WebSocket data if prevClose not yet loaded
-                            changeEl.textContent = (data.changePercent >= 0 ? '+' : '') + data.changePercent.toFixed(2) + '%';
-                            changeEl.className = `symbol-change ${data.changePercent >= 0 ? 'change-up' : 'change-down'}`;
-                        }
-                    }
-                }
-            });
         }
     }
 
@@ -1414,14 +1321,15 @@ export class SidebarController {
             const row = document.createElement('div');
             row.className = 'watchlist-item';
             row.dataset.symbol = item.symbol;
-            const displayTicker = extractSymbol(item.symbol);
+            row.dataset.exchange = (item.exchange || item.primary_exchange || 'BINANCE')
+            const displayTicker = item.symbol;
 
-            const logoUrl = getTickerLogo(item.base_currency_symbol || displayTicker, item.asset_type || item.market);
+            const logoUrl = getTickerLogo(item.base || displayTicker, item.original_symbol, item.market);
             row.innerHTML = `
                 <div class="watchlist-item-left">
-                    <div class="watchlist-item-icon">
-                        <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
-                        <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center;">${displayTicker[0]}</div>
+                    <div class="watchlist-item-icon" style="position: relative; background: #2a2e39; border-radius: 50%;">
+                        <div class="icon-fallback" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #d1d4dc; font-weight: bold; font-size: 11px; z-index: 1;">${displayTicker[0]}</div>
+                        <img src="${logoUrl}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; border-radius: 50%; z-index: 2; background: transparent; opacity: 0;" onload="this.style.opacity='1';" onerror="this.style.opacity='0';">
                     </div>
                     <div class="symbol-name">${displayTicker}</div>
                 </div>
@@ -1439,7 +1347,8 @@ export class SidebarController {
         const symbol = item.symbol.toUpperCase();
         const name = item.name || item.symbol;
         const market = item.market || 'crypto';
-        const exchange = (item.exchange || window.chart?.exchange || '').toUpperCase();
+        const isFutures = window.chart.market === "futures"
+        const exchange = window.chart?.exchange
 
         // Anti-flicker: If it's the same symbol and it's just a background sync (like timeframe change), 
         // skip everything to keep the current sidebar data intact.
@@ -1453,7 +1362,14 @@ export class SidebarController {
             this.sidebarYearStartPrice = null;
             this.fullYearStartPrice = null;
             this.currentSeasonalSymbol = symbol;
+            this.seasonalCandles = [];
+            this.earliestSeasonalTs = null;
+            this.seasonalMaxDays = {};
+            this.fullSeasonalsInitialized = false;
+            this.sidebarHoverDay = null;
+            this.fullHoverDay = null;
         }
+
 
         this.currentMarket = market;
 
@@ -1461,28 +1377,30 @@ export class SidebarController {
         const detailSymbol = document.getElementById('detail-symbol');
         const detailName = document.getElementById('detail-full-name');
         const detailLogo = document.getElementById('detail-logo');
-        console.log(item)
+
         if (detailSymbol) detailSymbol.textContent = item.symbol;
         if (detailName) detailName.textContent = name;
 
         // Update Market Type label early
         const dSpotTypeShort = document.getElementById('detail-spot-type');
         if (dSpotTypeShort) {
-            if (symbol.endsWith('.P')) {
+            if (isFutures) {
                 dSpotTypeShort.textContent = 'Futures';
-            } else if (market === 'stocks') {
-                dSpotTypeShort.textContent = 'Common Stock';
+            } else if (item.type === 'stock') {
+                dSpotTypeShort.textContent = 'Stock';
             } else {
                 dSpotTypeShort.textContent = 'Spot';
             }
         }
 
         if (detailLogo) {
-            const logoSymbol = extractSymbol(item.symbol);
-            const logoUrl = getTickerLogo(item.base_currency_symbol || logoSymbol, item.asset_type || item.market);
+            const logoUrl = getTickerLogo(window.chart.base, window.chart.original_symbol, window.chart.market);
+            const displaySymbol = window.chart.symbol || '?';
             detailLogo.innerHTML = `
-                <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
-                <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center;">${logoSymbol[0]}</div>
+                <div style="position: relative; width: 100%; height: 100%; background: #2a2e39; border-radius: 50%;">
+                    <div class="icon-fallback" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #d1d4dc; font-weight: bold; font-size: 16px; z-index: 1;">${displaySymbol[0]}</div>
+                    <img src="${logoUrl}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; border-radius: 50%; z-index: 2; background: transparent; opacity: 0;" onload="this.style.opacity='1';" onerror="this.style.opacity='0';">
+                </div>
             `;
             detailLogo.style.background = 'none';
         }
@@ -1494,7 +1412,7 @@ export class SidebarController {
         }
         const currencyLabels = document.querySelectorAll('.currency-label');
         currencyLabels.forEach(el => {
-            el.textContent = item.currency || window.chart?.currency || 'USDT';
+            el.textContent = window.chart?.currency;
         });
 
         // Only Reset secondary labels and Re-fetch if it's actually a NEW symbol.
@@ -1516,7 +1434,7 @@ export class SidebarController {
             if (dChgAbs) dChgAbs.textContent = item.changeAbs || (item.change ? item.change.split(' ')[0] : '...');
             if (dChgPct) dChgPct.textContent = item.changePercent || (item.change ? item.change.split(' ')[1] : '...');
             if (dVol) dVol.textContent = '...';
-            if (dStatus) dStatus.textContent = 'loading...';
+            if (dStatus) dStatus.textContent = 'Loading...';
 
             this.updatePerformanceData(symbol, market);
             this.updateSeasonals(symbol, market);
@@ -1525,14 +1443,19 @@ export class SidebarController {
         if (skipLoadOnChart) return;
 
         const layoutId = window.chart ? window.chart.currentLayoutId : null;
-        loadStockData(layoutId, { _id: item.symbol, ticker: item.symbol, primary_exchange: item.exchange, market: item.market });
+        initMarketSession(layoutId, {
+            ticker: item.symbol,
+            exchange: item.exchange,
+            market: item.market,
+            original_symbol: item.original_symbol || ''
+        });
     }
 
     async updatePerformanceData(symbol, market = 'crypto') {
         this.sessionOpenPrice = null; // Reset
         this.performanceBasePrices = {}; // Reset
         const detailAvgVol = document.getElementById('detail-avg-volume');
-        if (detailAvgVol) detailAvgVol.textContent = 'loading...';
+        if (detailAvgVol) detailAvgVol.textContent = 'Loading...';
 
         const perfs = ['1w', '1m', '3m', '6m', 'ytd', '1y'];
         perfs.forEach(p => {
@@ -1571,9 +1494,10 @@ export class SidebarController {
             const dStatus = document.getElementById('detail-market-status');
 
             if (dPrice) {
+                const decimals = (window.chart && window.chart.getPrecision) ? window.chart.getPrecision(currentPrice) : 2;
                 const formatted = currentPrice.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals
                 });
                 this.updateRollingPrice(dPrice, formatted);
             }
@@ -1582,21 +1506,27 @@ export class SidebarController {
             this.todayVolume = lastCandle.volume || 0;
             if (dVol) dVol.textContent = this.formatNumber(this.todayVolume);
 
-            const diff = currentPrice - this.sessionOpenPrice;
-            const diffPct = (diff / this.sessionOpenPrice) * 100;
-            const colorClass = diff >= 0 ? 'up' : 'down';
+            const open = parseFloat(this.sessionOpenPrice);
+            const curr = parseFloat(currentPrice);
 
-            if (dChgAbs) {
-                const sign = diff >= 0 ? '+' : '';
-                dChgAbs.textContent = `${sign}${diff.toFixed(2)}`;
-                dChgAbs.className = `change-container ${colorClass}`;
-                dChgAbs.style.color = diff >= 0 ? '#26a69a' : '#ef5350';
-            }
-            if (dChgPct) {
-                const sign = diff >= 0 ? '+' : '';
-                dChgPct.textContent = `${sign}${diffPct.toFixed(2)}%`;
-                dChgPct.className = `change-container ${colorClass}`;
-                dChgPct.style.color = diff >= 0 ? '#26a69a' : '#ef5350';
+            if (!isNaN(open) && !isNaN(curr) && open !== 0) {
+                const diff = curr - open;
+                const diffPct = (diff / open) * 100;
+                const colorClass = diff >= 0 ? 'up' : 'down';
+
+                const decimals = (window.chart && window.chart.getPrecision) ? window.chart.getPrecision(curr) : 2;
+                if (dChgAbs) {
+                    const sign = diff >= 0 ? '+' : '';
+                    dChgAbs.textContent = `${sign}${diff.toFixed(decimals)}`;
+                    dChgAbs.className = `change-container ${colorClass}`;
+                    dChgAbs.style.color = diff >= 0 ? '#26a69a' : '#ef5350';
+                }
+                if (dChgPct) {
+                    const sign = diff >= 0 ? '+' : '';
+                    dChgPct.textContent = `${sign}${diffPct.toFixed(2)}%`;
+                    dChgPct.className = `change-container ${colorClass}`;
+                    dChgPct.style.color = diff >= 0 ? '#26a69a' : '#ef5350';
+                }
             }
             if (dStatus && responseData.meta) {
                 const ms = (responseData.meta.marketStatus || 'REGULAR').toUpperCase();
@@ -1642,7 +1572,7 @@ export class SidebarController {
                     if (dAssetType) dAssetType.textContent = 'Crypto';
                 } else {
                     if (dSpotType) dSpotType.textContent = isFutures ? 'Futures' : (iType || 'Spot');
-                    if (dAssetType) dAssetType.textContent = market === 'stocks' ? 'Stock' : 'Crypto';
+                    if (dAssetType) dAssetType.textContent = market === 'stock' ? 'Stock' : 'Crypto';
                 }
             }
 
@@ -1666,25 +1596,32 @@ export class SidebarController {
                 const startCandle = candles.find(c => c.timestamp >= startTs) || candles[0];
                 if (!startCandle) continue;
 
-                const startPrice = startCandle.open;
-                this.performanceBasePrices[key] = startPrice;
-                const pctChange = ((currentPrice - startPrice) / startPrice) * 100;
+                const startPrice = parseFloat(startCandle.open);
+                const currPrice = parseFloat(currentPrice);
 
-                const el = document.getElementById(`perf-${key}`);
-                const box = document.getElementById(`perf-box-${key}`);
-                if (el) {
-                    el.textContent = (pctChange >= 0 ? '+' : '') + pctChange.toFixed(2) + '%';
-                    el.className = `perf-value ${pctChange >= 0 ? 'bg-up' : 'bg-down'}`;
-                }
-                if (box) {
-                    box.className = `perf-box ${pctChange >= 0 ? 'bg-up' : 'bg-down'}`;
+                if (!isNaN(startPrice) && !isNaN(currPrice) && startPrice !== 0) {
+                    const pctChange = ((currPrice - startPrice) / startPrice) * 100;
+                    this.performanceBasePrices[key] = startPrice;
+
+                    const el = document.getElementById(`perf-${key}`);
+                    const box = document.getElementById(`perf-box-${key}`);
+                    if (el) {
+                        el.textContent = (pctChange >= 0 ? '+' : '') + pctChange.toFixed(2) + '%';
+                        el.className = `perf-value ${pctChange >= 0 ? 'bg-up' : 'bg-down'}`;
+                    }
+                    if (box) {
+                        box.className = `perf-box ${pctChange >= 0 ? 'bg-up' : 'bg-down'}`;
+                    }
+                } else {
+                    const el = document.getElementById(`perf-${key}`);
+                    if (el) el.textContent = 'n/a';
                 }
             }
         } catch (e) {
             console.error("Error fetching performance/avg volume:", e);
         } finally {
             // Ensure loading indicator is removed even if fetch fails or returns empty
-            if (detailAvgVol && detailAvgVol.textContent === 'loading...') {
+            if (detailAvgVol && detailAvgVol.textContent === 'Loading...') {
                 detailAvgVol.textContent = 'n/a';
             }
             perfs.forEach(p => {
@@ -1717,7 +1654,7 @@ export class SidebarController {
             mgr = document.createElement('div');
             mgr.id = 'layout-manager-popup';
             mgr.className = 'context-menu active'; // Reuse context menu styling
-            mgr.style.cssText = `position: fixed; top: 100px; right: 320px; width: 220px; z-index: 1000; background: #131722; border: 1px solid #363a45; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);`;
+            mgr.style.cssText = `position: fixed; top: 100px; right: 320px; width: 220px; z-index: 1000; background: #000000; border: 1px solid #363a45; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);`;
             document.body.appendChild(mgr);
         } else {
             mgr.remove();
@@ -1832,8 +1769,8 @@ export class SidebarController {
         window.dispatchEvent(new CustomEvent('layout-changed', { detail: { name: layout.name } }));
 
         // Re-load stock data with this specific layout
-        if (typeof loadStockData === 'function') {
-            await loadStockData(layout.id);
+        if (typeof initMarketSession === 'function') {
+            await initMarketSession(layout.id);
         }
 
         this.toggleLayoutManager(); // Close popup
@@ -1850,8 +1787,8 @@ export class SidebarController {
                     const stock = results[0];
                     searchInput.dataset.stockId = stock.id;
                     searchInput.value = stock.ticker;
-                    if (typeof window.loadStockData === 'function') {
-                        await window.loadStockData();
+                    if (typeof window.initMarketSession === 'function') {
+                        await window.initMarketSession();
                     }
                 }
             }
@@ -2155,9 +2092,7 @@ export class SidebarController {
         if (title && fullName) title.textContent = fullName.textContent;
 
         if (logo) {
-            const baseSymbol = extractSymbol(symbol);
-            const assetType = this.currentMarket || 'crypto';
-            const logoUrl = getTickerLogo(baseSymbol, assetType);
+            const logoUrl = getTickerLogo(window.chart.base, window.chart.original_symbol, window.chart.market);
             logo.innerHTML = `
                 <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
                 <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center;">${symbol.charAt(0)}</div>
@@ -2204,12 +2139,13 @@ export class SidebarController {
             }
 
             if (this.seasonalCandles.length === 0) {
-                // INITIAL LOAD: Fetch last 1100 candles (approx 3 years)
+                // BULK LOAD: Fetch up to 10 years (approx 3650-4000 candles) at once for accuracy
                 const currentEndTs = Date.now();
-                const res = await fetch(`${apiBase}/market/history?symbol=${symbolKey}&timeframe=1d&endDateTs=${currentEndTs}&market=${marketParam}&limit=1100&exchange=${activeExch}`);
+                const res = await fetch(`${apiBase}/market/history?symbol=${symbolKey}&timeframe=1d&endDateTs=${currentEndTs}&market=${marketParam}&limit=4000&exchange=${activeExch}`);
                 const responseData = await res.json();
                 const candles = (responseData && responseData.candles) || [];
                 const meta = (responseData && responseData.meta) || {};
+
 
                 if (Array.isArray(candles) && candles.length > 0) {
                     this.seasonalCandles = [...candles];
@@ -2217,10 +2153,21 @@ export class SidebarController {
                     this.earliestSeasonalTs = this.seasonalCandles[0].timestamp;
                 }
 
-                // Set PRECISION bounds from backend metadata
-                const listingYear = (meta && meta.listingYear && meta.listingYear > 0) ? meta.listingYear : 2017;
-                this.minAllowedYear = listingYear;
+                // Force 10-year limit (current year + 9 past years)
+                const currentYear = new Date().getUTCFullYear();
+                const absoluteFloor = currentYear - 9;
+
+                if (this.earliestSeasonalTs) {
+                    const earliestYearFound = new Date(this.earliestSeasonalTs).getUTCFullYear();
+                    // Bottom out at EITHER the earliest year we found, OR the 10-year limit
+                    this.minAllowedYear = Math.max(absoluteFloor, earliestYearFound);
+                } else {
+                    this.minAllowedYear = absoluteFloor;
+                }
             }
+
+
+
 
             if (this.seasonalCandles.length === 0) {
                 if (svg) svg.innerHTML = `<text x="${svg.clientWidth / 2}" y="${svg.clientHeight / 2}" fill="#787b86" text-anchor="middle">No historical data available</text>`;
@@ -2233,15 +2180,16 @@ export class SidebarController {
             const currentYear = new Date().getUTCFullYear();
             this.currentEndYear = currentYear;
 
-            // Default view to 3 years, but don't go before listing year
+            // Default view to 3 years, but don't go before our absolute floor
             this.currentStartYear = Math.max(currentYear - 2, this.minAllowedYear);
 
-            // Slider Range: Locked strictly to the exchange's history
+            // Slider Range: Locked strictly to 10 years (or less if listing is newer, handled by fetch)
             this.seasonalSliderMax = currentYear;
             this.seasonalSliderMin = this.minAllowedYear;
 
             this.initFullSeasonals();
             this.renderFullSeasonalsChart(this.fullSeasonalsResults, this.currentStartYear, this.currentEndYear);
+
         } catch (e) {
             console.error("Error opening seasonals view:", e);
         }
@@ -2327,74 +2275,14 @@ export class SidebarController {
         return results;
     }
 
+    /**
+     * Data is now loaded in bulk for 10 years in openSeasonalsView,
+     * so lazy-loading is no longer required for the 10-year range.
+     */
     async loadMoreSeasonalHistory() {
-        if (this.isFetchingMoreSeasonals || !this.earliestSeasonalTs) return;
-
-        // Don't fetch past 1970
-        if (new Date(this.earliestSeasonalTs).getUTCFullYear() <= this.minAllowedYear) return;
-
-        this.isFetchingMoreSeasonals = true;
-        const symbol = this.currentSeasonalSymbol;
-        const exchange = window.chart?.exchange || '';
-        const market = this.currentMarket || 'crypto';
-        const marketParam = market === 'stock' ? 'stocks' : market;
-        const apiBase = 'http://localhost:5000/api/v1';
-
-        // Set absolute floor
-        const absoluteFloor = (market === 'stock') ? 1970 : 2010;
-
-        // Show loading indicator on chart
-        const svg = document.getElementById('seasonals-full-svg');
-        let loadingText;
-        if (svg) {
-            loadingText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-            loadingText.setAttribute("x", "20");
-            loadingText.setAttribute("y", "30");
-            loadingText.setAttribute("fill", "#2962ff");
-            loadingText.setAttribute("font-size", "12px");
-            loadingText.textContent = "Loading more history...";
-            svg.appendChild(loadingText);
-        }
-
-        try {
-            const nextEndTs = this.earliestSeasonalTs - 1;
-            const res = await fetch(`${apiBase}/market/history?symbol=${symbol}&timeframe=1d&endDateTs=${nextEndTs}&market=${marketParam}&limit=1500&exchange=${exchange}`);
-            const responseData = await res.json();
-            const candles = responseData.candles || [];
-
-            if (Array.isArray(candles) && candles.length > 0) {
-                // Merge and Re-sort
-                const combined = [...candles, ...this.seasonalCandles];
-                combined.sort((a, b) => a.timestamp - b.timestamp);
-                this.seasonalCandles = combined;
-                this.earliestSeasonalTs = this.seasonalCandles[0].timestamp;
-
-                // Re-process all data
-                this.fullSeasonalsResults = this.processSeasonalData(this.seasonalCandles);
-
-                // Update slider min to the earliest year we found, 
-                // but don't let it jump to 1970 unless we actually HAVE data there.
-                const availYears = Object.keys(this.fullSeasonalsResults).map(Number).sort((a, b) => a - b);
-                if (availYears.length > 0) {
-                    const oldestYearFound = availYears[0];
-                    // Expand the slider floor as we load more data
-                    this.seasonalSliderMin = Math.min(this.seasonalSliderMin, oldestYearFound);
-                }
-
-                // Re-render
-                this.renderFullSeasonalsChart(this.fullSeasonalsResults, this.currentStartYear, this.currentEndYear);
-                const tableWrapper = document.getElementById('seasonals-full-table');
-                if (tableWrapper && tableWrapper.style.display === 'block') {
-                    this.renderSeasonalTable(this.fullSeasonalsResults);
-                }
-            }
-        } catch (e) {
-            console.error("Error loading more seasonal history:", e);
-        } finally {
-            if (loadingText && loadingText.parentNode) loadingText.parentNode.removeChild(loadingText);
-            this.isFetchingMoreSeasonals = false;
-        }
+        return;
     }
+
 
     isLeapYear(year) {
         return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
@@ -2815,7 +2703,7 @@ export class SidebarController {
                 circle.setAttribute("cy", ay);
                 circle.setAttribute("r", "4");
                 circle.setAttribute("fill", "#ffffff");
-                circle.setAttribute("stroke", "#131722");
+                circle.setAttribute("stroke", "#000000");
                 circle.setAttribute("stroke-width", "1");
                 circle.setAttribute("class", "seasonal-avg-dot");
                 circle.setAttribute("style", "pointer-events: none");
@@ -2903,7 +2791,7 @@ export class SidebarController {
                 dot.setAttribute("cy", dy);
                 dot.setAttribute("r", isSidebar ? "5" : "6.5");
                 dot.setAttribute("fill", color);
-                dot.setAttribute("stroke", "#131722");
+                dot.setAttribute("stroke", "#000000");
                 dot.setAttribute("stroke-width", "1.5");
                 dot.setAttribute("pointer-events", "none");
                 svg.appendChild(dot);
@@ -3312,7 +3200,7 @@ export class SidebarController {
         const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
 
         // If brightness is > 150 (light color), use dark text, else white
-        return (yiq >= 150) ? '#131722' : '#ffffff';
+        return (yiq >= 150) ? '#000000' : '#ffffff';
     }
 
     hexToRgb(hex) {
@@ -3523,13 +3411,9 @@ export class SidebarController {
             const exchangeName = document.getElementById('detail-exchange')?.textContent || '';
             const title = `${ticker}${exchangeName ? ' • ' + exchangeName : ''}`;
 
-            // Fetch and Load Token Icon - REFINED SYMBOL EXTRACTION
             let logoImg = null;
             try {
-                // Strip slashes and suffixes to get clean asset symbol (e.g. BTC/USDT -> BTC)
-                let cleanSymbol = ticker.split(/[/\-:_]/)[0].replace('.P', '');
-                const logoUrl = getTickerLogo(cleanSymbol, this.currentMarket || 'crypto');
-
+                const logoUrl = getTickerLogo(window.chart.base, window.chart.original_symbol, window.chart.market);
                 logoImg = new Image();
                 logoImg.crossOrigin = 'anonymous'; // Critical for canvas drawing
                 await new Promise((resolve) => {
@@ -3898,8 +3782,7 @@ export class SidebarController {
             // Fetch and Load Token Icon (Sync with Chart logic)
             let logoImg = null;
             try {
-                let cleanSymbol = ticker.split(/[/\-:_]/)[0].replace('.P', '');
-                const logoUrl = getTickerLogo(cleanSymbol, this.currentMarket || 'crypto');
+                const logoUrl = getTickerLogo(window.chart.base, window.chart.original_symbol, window.chart.market);
                 logoImg = new Image();
                 logoImg.crossOrigin = 'anonymous';
                 await new Promise((resolve) => {
@@ -3941,7 +3824,7 @@ export class SidebarController {
 
             // 5. Draw Table Header
             let curY = padding + headerHeight;
-            ctx.fillStyle = '#131722';
+            ctx.fillStyle = '#000000';
             ctx.fillRect(padding, curY, tableWidth, rowHeight);
 
             ctx.fillStyle = '#787b86';
@@ -3998,7 +3881,7 @@ export class SidebarController {
 
             // 7. Draw Footer (AVG + Rise/Fall) - SYNCED WITH CHART LOGIC
             if (this.showSeasonalAverage) {
-                ctx.fillStyle = '#131722';
+                ctx.fillStyle = '#000000';
                 ctx.fillRect(padding, curY, tableWidth, rowHeight);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = `bold ${Math.round(13 * s)}px Arial`;
@@ -4056,7 +3939,7 @@ export class SidebarController {
             }
 
             // Rise/Fall Row (SCALED FOR HD)
-            ctx.fillStyle = '#131722';
+            ctx.fillStyle = '#000000';
             ctx.fillRect(padding, curY, tableWidth, rowHeight);
             ctx.fillStyle = '#787b86';
             ctx.font = `bold ${Math.round(12 * s)}px Arial`;

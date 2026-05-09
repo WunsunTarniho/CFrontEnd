@@ -377,6 +377,7 @@ export class ChartSettingsController {
             this.chart.setInitialView();
         });
 
+        /*
         // Volume Footprint
         h('setting-footprint-row-size-method', 'footprintRowSizeMethod', false, false, () => {
             this.chart.setInitialView();
@@ -452,6 +453,7 @@ export class ChartSettingsController {
                 this.chart.render();
             });
         }
+        */
         h('setting-renko-atr-length', 'renkoAtRLength', false, true, () => {
             this.chart.setInitialView();
         });
@@ -613,9 +615,12 @@ export class ChartSettingsController {
             targetId = 'symbol-section-kagi';
         } else if (mode === 'pnf') {
             targetId = 'symbol-section-pnf';
+        }
+        /*
         } else if (mode === 'footprint') {
             targetId = 'symbol-section-footprint';
         }
+        */
 
         const target = document.getElementById(targetId);
         if (target) target.style.display = 'block';
@@ -629,6 +634,7 @@ export class ChartSettingsController {
             if (revert && this.snapshot) {
                 this.chart.applyChartState(this.snapshot);
                 this.chart.render(true);
+                if (window.autoSaveLayoutViewState) window.autoSaveLayoutViewState();
             }
             this.snapshot = null;
         }
@@ -816,6 +822,7 @@ export class ChartSettingsController {
         if (pnfAtrRow) pnfAtrRow.style.display = pnfMethod === 'atr' ? 'flex' : 'none';
         if (pnfBoxRow) pnfBoxRow.style.display = pnfMethod === 'traditional' ? 'flex' : 'none';
 
+        /*
         // Volume Footprint
         s('setting-footprint-row-size-method', 'footprintRowSizeMethod');
         s('setting-footprint-atr-length', 'footprintAtrLength');
@@ -855,6 +862,7 @@ export class ChartSettingsController {
             sAdvanced(`setting-footprint-buy-bg-${i}`, { hexAlpha: this.chart.footprintBuyBgColors[i - 1] || '#000' });
             sAdvanced(`setting-footprint-total-bg-${i}`, { hexAlpha: this.chart.footprintTotalBgColors[i - 1] || '#000' });
         }
+        */
 
         const renkoMethod = this.chart.renkoBoxSizeMethod;
         const atrRow = document.getElementById('setting-renko-atr-row');
@@ -1025,6 +1033,5 @@ export class ChartSettingsController {
 
         localStorage.setItem('chart_global_settings', JSON.stringify(settings));
         this.chart.render(true);
-        this.chart.isLayoutDirty = true;
     }
 }

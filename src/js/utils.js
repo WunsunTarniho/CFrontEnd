@@ -176,12 +176,24 @@ export function closeTfPopup() {
 
 export function setTfActive(tf) {
     const label = {
-        '1s': '1s', '1m': '1m', '2m': '2m', '3m': '3m', '5m': '5m', '10m': '10m', '15m': '15m', '30m': '30m', '45m': '45m',
+        '1s': '1s', '5s': '5s', '10s': '10s', '15s': '15s', '30s': '30s', '45s': '45s',
+        '1m': '1m', '2m': '2m', '3m': '3m', '5m': '5m', '10m': '10m', '15m': '15m', '30m': '30m', '45m': '45m',
         '1h': '1h', '2h': '2h', '4h': '4h', '6h': '6h', '12h': '12h',
         '1d': '1D', '1w': '1W',
         '1mo': '1M', '3mo': '3M', '6mo': '6M', '12mo': '12M'
     };
-    const display = label[tf] || tf.toUpperCase();
+    
+    let display = label[tf];
+    if (!display) {
+        if (tf.endsWith('t')) {
+            display = tf.toUpperCase(); // e.g. 1000T
+        } else if (tf.endsWith('r')) {
+            display = tf.toUpperCase(); // e.g. 10R
+        } else {
+            display = tf.toUpperCase();
+        }
+    }
+
     const el = document.getElementById('tf-label');
     if (el) el.textContent = display;
     document.querySelectorAll('[data-tf]').forEach(o => {
@@ -213,39 +225,11 @@ export function setSearchTicker(ticker) {
 
 }
 
-export function extractSymbol(ticker) {
-    let s = (ticker || "").toUpperCase();
-    if (s.includes(':')) s = s.split(':').pop();
-    if (s.endsWith('.P')) return s;
-    if (s.includes('.')) s = s.split('.')[0];
-    return s;
-}
 
-export function getTickerLogo(base, market = 'crypto') {
+
+export function getTickerLogo(base, original_symbol=false, market = 'crypto') {
     base = (base || "").toUpperCase();
-
-    // 1. Handle Global Indices (Yahoo Style: ^SPX, ^DJI, ^IXIC)
-    if (base.startsWith('^')) {
-        const index = base.substring(1).toUpperCase();
-        if (index === 'SPX' || index === 'SPY') return 'https://static.wikia.nocookie.net/logopedia/images/4/4b/S%26P_500_logo.svg.png';
-        if (index === 'DJI') return 'https://www.spglobal.com/spdji/en/idbi/dow-jones-industrial-average.png';
-        if (index === 'IXIC' || index === 'NDX') return 'https://www.nasdaq.com/favicon.ico';
-        if (index === 'VIX') return 'https://www.cboe.com/favicon.ico';
-        return 'https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.17.2/128/color/snp.png'; // Verified
-    }
-
-    // 2. Handle Forex and Metals (Yahoo Style: EURUSD=X, XAUUSD=X)
-    if (base.endsWith('=X') || market === 'forex') {
-        const base = base.replace('=X', '').substring(0, 3).toLowerCase();
-        if (base === 'xau' || base === 'xag') return `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.17.2/128/color/${base}.png`; // Verified
-        return `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.17.2/128/color/${base}.png`; // Verified
-    }
-
-    if (market === 'crypto' || !market) {
-        return `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.17.2/128/color/${base.toLowerCase()}.png`;
-    } else {
-        return `https://companiesmarketcap.com/img/company-logos/64/${base.toUpperCase()}.png`;
-    }
+    return `https://cdn.jsdelivr.net/npm/cryptocurrency-icons@0.17.2/128/color/${base.toLowerCase()}.png`;
 }
 
 export function getExchangeLogo(exchange, micCode = '') {

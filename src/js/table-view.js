@@ -1,4 +1,4 @@
-import { getTickerLogo, extractSymbol } from "./utils.js";
+import { getTickerLogo } from "./utils.js";
 
 export class TableViewController {
     constructor(chart) {
@@ -101,19 +101,20 @@ export class TableViewController {
 
         // Update headers based on chart symbol
         const symbol = this.chart.symbol || 'Unknown';
-        const market = (this.chart.market || 'crypto').toLowerCase();
         const exchange = this.chart.exchange || 'Unknown';
-        const fullName = this.chart.fullName || symbol;
+        const fullName = this.chart.name || symbol;
 
         if (this.titleEl) this.titleEl.textContent = fullName;
         if (this.subtitleEl) this.subtitleEl.textContent = `${symbol} - ${exchange}`;
 
         if (this.logoEl) {
-            const logoUrl = getTickerLogo(extractSymbol(symbol), market);
+            const logoUrl = getTickerLogo(this.chart.base, this.chart.original_symbol, this.chart.market);
 
             this.logoEl.innerHTML = `
-                <img src="${logoUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">
-                <div class="icon-fallback" style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; color: #131722;">${symbol.charAt(0)}</div>
+                <div style="position: relative; width: 100%; height: 100%; background: #2a2e39; border-radius: 50%;">
+                    <div class="icon-fallback" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #d1d4dc; font-weight: bold; font-size: 11px; z-index: 1;">${symbol.charAt(0)}</div>
+                    <img src="${logoUrl}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; border-radius: 50%; z-index: 2; background: transparent; opacity: 0;" onload="this.style.opacity='1';" onerror="this.style.opacity='0';">
+                </div>
             `;
         }
 
@@ -176,7 +177,7 @@ export class TableViewController {
             const tr = document.createElement('tr');
             tr.dataset.timestamp = candle.timestamp;
             tr.style.borderBottom = '1px solid #2a2e39';
-            tr.onmouseover = () => tr.style.backgroundColor = '#1e222d';
+            tr.onmouseover = () => tr.style.backgroundColor = '#2a2e39';
             tr.onmouseout = () => tr.style.backgroundColor = 'transparent';
 
             tr.innerHTML = `
@@ -230,7 +231,7 @@ export class TableViewController {
             const tr = document.createElement('tr');
             tr.dataset.timestamp = newest.timestamp;
             tr.style.borderBottom = '1px solid #2a2e39';
-            tr.onmouseover = () => tr.style.backgroundColor = '#1e222d';
+            tr.onmouseover = () => tr.style.backgroundColor = '#2a2e39';
             tr.onmouseout = () => tr.style.backgroundColor = 'transparent';
 
             tr.innerHTML = `

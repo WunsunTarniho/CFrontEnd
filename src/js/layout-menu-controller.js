@@ -7,7 +7,7 @@ import {
     touchLayout,
     setDefaultLayout 
 } from './service.js';
-import { saveCurrentLayout, loadStockData } from './data-service.js';
+import { saveCurrentLayout, initMarketSession } from './data-service.js';
 
 export class LayoutMenuController {
     constructor(chart) {
@@ -96,7 +96,7 @@ export class LayoutMenuController {
                         }
                         
                         // 2. Switch layout
-                        await loadStockData(layout.id);
+                        await initMarketSession(layout.id);
                         this.dropdown.classList.remove('show');
                     } catch (err) {
                         console.error('Failed to switch layout:', err);
@@ -172,8 +172,8 @@ export class LayoutMenuController {
                     });
                     
                     // 2. Switch to it
-                    if (typeof loadStockData === 'function') {
-                        await loadStockData(newLayout.id);
+                    if (typeof initMarketSession === 'function') {
+                        await initMarketSession(newLayout.id);
                     }
                     this.dropdown.classList.remove('show');
                 } catch (e) {

@@ -17,7 +17,7 @@
 .chart-settings-dialog {
     width: 680px;
     height: 580px;
-    background: #1e222d;
+    background: #16161a;
     border-radius: 6px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     display: flex;
@@ -30,7 +30,7 @@
 /* Header */
 .chart-settings-header {
     padding: 12px 16px;
-    border-bottom: 1px solid #2a2e39;
+    border-bottom: 1px solid #262626;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -65,9 +65,9 @@
 /* Sidebar */
 .chart-settings-sidebar {
     width: 180px;
-    border-right: 1px solid #2a2e39;
+    border-right: 1px solid #262626;
     padding: 8px 0;
-    background: #1e222d;
+    background: #121214;
 }
 
 .chart-settings-tab {
@@ -82,12 +82,12 @@
 }
 
 .chart-settings-tab:hover {
-    background: #2a2e39;
+    background: #262626;
     color: #f0f3fa;
 }
 
 .chart-settings-tab.active {
-    background: #2a2e39;
+    background: #262626;
     color: #2962ff;
     border-left: 2px solid #2962ff;
     padding-left: 14px;
@@ -99,7 +99,7 @@
     flex: 1;
     padding: 20px 24px;
     overflow-y: auto;
-    background: #1e222d;
+    background: #16161a;
 }
 
 .chart-settings-view {
@@ -155,7 +155,7 @@
 }
 
 .settings-row select {
-    background: #2a2e39;
+    background: #262626;
     border: 1px solid #363c4e;
     color: #d1d4dc;
     padding: 4px 8px;
@@ -175,11 +175,11 @@
 /* Footer */
 .chart-settings-footer {
     padding: 12px 16px;
-    border-top: 1px solid #2a2e39;
+    border-top: 1px solid #262626;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #1e222d;
+    background: #16161a;
 }
 
 .footer-left {
@@ -202,7 +202,7 @@
 }
 
 .btn-cancel {
-    background: #2a2e39;
+    background: #262626;
     color: #f0f3fa;
     border: 1px solid #363c4e;
 }
@@ -231,7 +231,7 @@
 }
 
 .btn-template:hover {
-    background: #2a2e39;
+    background: #262626;
 }
 
 /* Custom width picker and other inputs (reusing some styles might be needed or redefined) */
