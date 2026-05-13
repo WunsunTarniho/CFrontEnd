@@ -46,6 +46,9 @@ export class ToolSettingsController {
                     this.updatePreview();
                 }
             });
+        } else {
+            // Update options in case they changed (e.g. switching between regular line and highlighter)
+            this.advancedComps[id].updateOptions(options);
         }
         
         this.advancedComps[id].setValue(value);
@@ -57,6 +60,12 @@ export class ToolSettingsController {
         const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
         if (m) return '#' + [m[1], m[2], m[3]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
         return '#2962FF';
+    }
+
+    _rgbaToHex(color, opacity) {
+        const hex = this._hexFromColor(color);
+        const alpha = Math.round(opacity * 255).toString(16).padStart(2, '0');
+        return hex + alpha;
     }
 
     _syncCustomWidthPicker(idOrEl, width, color) {
@@ -165,11 +174,10 @@ export class ToolSettingsController {
 
     makePitchforkLevelRow(lvlObj, idx, onVisibility, onColor, onWidth) {
         const row = document.createElement('div');
-        row.className = 'settings-row'; row.style.margin = '0'; row.style.gap = '4px'; row.style.alignItems = 'center';
-
+        row.className = 'settings-row';
         row.innerHTML = `
-                    <input type="checkbox" id="pf-lvl-vis-${idx}" ${lvlObj.visibility !== false ? 'checked' : ''} style="margin:0;">
-                    <div style="font-size:12px; color:#f0f3fa; flex:1; white-space:nowrap;">${lvlObj.level}</div>
+                    <input type="checkbox" id="pf-lvl-vis-${idx}" ${lvlObj.visibility !== false ? 'checked' : ''}>
+                    <div style="font-size: 12px; color: #d1d4dc; flex: 1; white-space: nowrap;">${lvlObj.level}</div>
                     <input type="color" id="pf-lvl-color-${idx}" class="settings-color-picker" value="${this._hexFromColor(lvlObj.color)}">
                     <div id="pf-lvl-width-picker-${idx}" class="custom-width-picker">
                         <div class="custom-width-picker-line" style="background-color: ${this._hexFromColor(lvlObj.color)}; height: ${lvlObj.width || 1}px;"></div>
@@ -390,13 +398,8 @@ export class ToolSettingsController {
 
         // ── Shape section ──
         // (Border handled by AdvancedLineSetting)
-        document.getElementById('shape-fill-color').oninput = (e) => {
-            this.tempStyle.fillColor = e.target.value;
-            this.updatePreview();
-        };
-        document.getElementById('shape-text-color').oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
-        document.getElementById('shape-font-size').onchange = (e) => { this.tempStyle.fontSize = e.target.value + 'px'; this.updatePreview(); };
-        document.getElementById('shape-text-content').oninput = (e) => { this.tempStyle.text = e.target.value; this.updatePreview(); };
+        // Shape section handled by AdvancedLineSetting in syncUIToState
+
         document.getElementById('shape-text-bold').onclick = (e) => {
             e.currentTarget.classList.toggle('active');
             this.tempStyle.fontWeight = e.currentTarget.classList.contains('active') ? 'bold' : 'normal';
@@ -415,14 +418,8 @@ export class ToolSettingsController {
             };
         }
 
-        // Text section: apply both textColor and color for simple Text tools to ensure sync
-        document.getElementById('text-color').oninput = (e) => {
-            this.tempStyle.textColor = e.target.value;
-            this.updatePreview();
-        };
-        document.getElementById('text-font-size').onchange = (e) => { this.tempStyle.fontSize = e.target.value + 'px'; this.updatePreview(); };
-        document.getElementById('settings-text-content').oninput = (e) => { this.tempStyle.text = e.target.value; this.updatePreview(); };
-        document.getElementById('text-align').onchange = (e) => { this.tempStyle.textAlign = e.target.value; this.updatePreview(); };
+        // Text section handled by AdvancedLineSetting in syncUIToState
+
         document.getElementById('text-bold').onclick = (e) => {
             e.currentTarget.classList.toggle('active');
             this.tempStyle.fontWeight = e.currentTarget.classList.contains('active') ? 'bold' : 'normal';
@@ -457,15 +454,10 @@ export class ToolSettingsController {
 
         const fibBgShow = document.getElementById('fib-background-show');
         if (fibBgShow) fibBgShow.onchange = (e) => { this.tempStyle.backgroundShow = e.target.checked; this.updatePreview(); };
-        const fibBgColor = document.getElementById('fib-background-color');
-        if (fibBgColor) fibBgColor.oninput = (e) => { this.tempStyle.fillColor = e.target.value; this.updatePreview(); };
-        const fibOpacity = document.getElementById('fib-opacity');
-        if (fibOpacity) fibOpacity.oninput = (e) => {
-            const val = e.target.value / 100;
-            this.tempStyle.backgroundOpacity = val;
-            document.getElementById('fib-opacity-label').textContent = e.target.value + '%';
-            this.updatePreview();
-        };
+        // Fibonacci Background handled by AdvancedLineSetting in syncUIToState
+
+        // Fibonacci Background handled by AdvancedLineSetting in syncUIToState
+
         const fibReverse = document.getElementById('fib-reverse');
         if (fibReverse) fibReverse.onchange = (e) => { this.tempStyle.reverse = e.target.checked; this.updatePreview(); };
         const fibFontSize = document.getElementById('fib-font-size');
@@ -507,21 +499,8 @@ export class ToolSettingsController {
             };
         });
 
-        // Opacity & Background visibility
-        ['h', 'v'].forEach(axis => {
-            const showEl = document.getElementById(`gann-${axis}-background-show`);
-            if (showEl) showEl.onchange = (e) => {
-                this.tempStyle[`${axis === 'h' ? 'h' : 'v'}BackgroundShow`] = e.target.checked;
-                this.updatePreview();
-            };
-            const opEl = document.getElementById(`gann-${axis}-opacity`);
-            if (opEl) opEl.oninput = (e) => {
-                this.tempStyle[`${axis === 'h' ? 'h' : 'v'}BackgroundOpacity`] = +e.target.value / 100;
-                const label = document.getElementById(`gann-${axis}-opacity-label`);
-                if (label) label.textContent = e.target.value + '%';
-                this.updatePreview();
-            };
-        });
+        // Gann backgrounds handled by AdvancedLineSetting in syncUIToState
+
 
         const gannFontSize = document.getElementById('gann-font-size');
         if (gannFontSize) gannFontSize.oninput = (e) => { this.tempStyle.fontSize = +e.target.value; this.updatePreview(); };
@@ -531,16 +510,12 @@ export class ToolSettingsController {
 
         const rangeFillColor = document.getElementById('range-fill-color');
         if (rangeFillColor) rangeFillColor.oninput = (e) => { this.tempStyle.fillColor = e.target.value; this.updatePreview(); };
-        const rangeBgOpacity = document.getElementById('range-background-opacity');
-        if (rangeBgOpacity) rangeBgOpacity.oninput = (e) => {
-            this.tempStyle.backgroundOpacity = +e.target.value / 100;
-            const label = document.getElementById('range-background-opacity-label');
-            if (label) label.textContent = e.target.value + '%';
-            this.updatePreview();
-        };
+        // Range background handled by AdvancedLineSetting in syncUIToState
 
+
+        // Price Range text handled by AdvancedLineSetting in syncUIToState
         const rangeTextColor = document.getElementById('range-text-color');
-        if (rangeTextColor) rangeTextColor.oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
+
         const rangeFontSize = document.getElementById('range-font-size');
         if (rangeFontSize) rangeFontSize.onchange = (e) => { this.tempStyle.fontSize = e.target.value; this.updatePreview(); };
 
@@ -749,35 +724,8 @@ export class ToolSettingsController {
             if (el) el.oninput = updatePosLevels;
         });
 
-        // Colors
-        const posTargetColor = document.getElementById('pos-target-color');
-        if (posTargetColor) posTargetColor.oninput = (e) => {
-            if (!this.tempStyle.fillColor) this.tempStyle.fillColor = JSON.parse(JSON.stringify(this.activeTool.style.fillColor || {}));
-            this.tempStyle.fillColor.profit = e.target.value;
-            this.updatePreview();
-        };
-        const posTargetOp = document.getElementById('pos-target-opacity');
-        if (posTargetOp) posTargetOp.oninput = (e) => {
-            this.tempStyle.targetOpacity = +e.target.value;
-            document.getElementById('pos-target-opacity-label').textContent = e.target.value + '%';
-            this.updatePreview();
-        };
+        // Colors handled by AdvancedLineSetting in syncUIToState
 
-        const posStopColor = document.getElementById('pos-stop-color');
-        if (posStopColor) posStopColor.oninput = (e) => {
-            if (!this.tempStyle.fillColor) this.tempStyle.fillColor = JSON.parse(JSON.stringify(this.activeTool.style.fillColor || {}));
-            this.tempStyle.fillColor.loss = e.target.value;
-            this.updatePreview();
-        };
-        const posStopOp = document.getElementById('pos-stop-opacity');
-        if (posStopOp) posStopOp.oninput = (e) => {
-            this.tempStyle.stopOpacity = +e.target.value;
-            document.getElementById('pos-stop-opacity-label').textContent = e.target.value + '%';
-            this.updatePreview();
-        };
-
-        const posTextColor = document.getElementById('pos-text-color');
-        if (posTextColor) posTextColor.oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
         const posFontSize = document.getElementById('pos-font-size');
         if (posFontSize) posFontSize.onchange = (e) => { this.tempStyle.fontSize = e.target.value; this.updatePreview(); };
 
@@ -823,9 +771,8 @@ export class ToolSettingsController {
         const fcFailureBg = document.getElementById('fc-failure-bg');
         if (fcFailureBg) fcFailureBg.oninput = (e) => { this.tempStyle.failureBgColor = e.target.value; this.updatePreview(); };
 
-        // Bars Pattern
-        const bpColor = document.getElementById('bp-color');
-        if (bpColor) bpColor.oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
+        // Bars Pattern handled by AdvancedLineSetting in syncUIToState
+
         const bpMode = document.getElementById('bp-mode');
         if (bpMode) bpMode.onchange = (e) => { this.tempStyle.mode = e.target.value; this.updatePreview(); };
         const bpMirrored = document.getElementById('bp-mirrored');
@@ -834,8 +781,8 @@ export class ToolSettingsController {
         if (bpFlipped) bpFlipped.onchange = (e) => { this.tempStyle.flipped = e.target.checked; this.updatePreview(); };
 
         // ── Chart Patterns section ──
-        const cpTextColor = document.getElementById('cp-text-color');
-        if (cpTextColor) cpTextColor.oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
+        // Chart Patterns handled by AdvancedLineSetting in syncUIToState
+
         const cpFontSize = document.getElementById('cp-font-size');
         if (cpFontSize) cpFontSize.onchange = (e) => { this.tempStyle.fontSize = e.target.value + 'px'; this.updatePreview(); };
         const cpBold = document.getElementById('cp-bold');
@@ -865,8 +812,8 @@ export class ToolSettingsController {
         };
 
         // ── Elliott Waves section ──
-        const ewTextColor = document.getElementById('ew-text-color');
-        if (ewTextColor) ewTextColor.oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
+        // Elliott Waves handled by AdvancedLineSetting in syncUIToState
+
 
         // ── Cycles section ──
         // (Line handled by AdvancedLineSetting)
@@ -960,7 +907,7 @@ export class ToolSettingsController {
         if (shapeTextStyleToggles) shapeTextStyleToggles.style.display = isNoFontStyleTool ? 'none' : '';
 
         // Hide Opacity for specific text tools (Except Table)
-        const NO_OPACITY_TOOLS = ['pin', 'sign-post', 'flag-mark', 'comment', 'callout', 'price-label'];
+        const NO_OPACITY_TOOLS = ['sign-post', 'flag-mark'];
         const isNoOpacityTool = NO_OPACITY_TOOLS.includes(this.activeTool.type);
         const shapeOpacity = document.getElementById('shape-opacity');
         const shapeOpacityLabel = document.getElementById('shape-opacity-label');
@@ -1129,18 +1076,40 @@ export class ToolSettingsController {
             // Style
             const fillProfit = s.fillColor?.profit || '#22AB94';
             const fillLoss = s.fillColor?.loss || '#F23645';
-            document.getElementById('pos-target-color').value = fillProfit;
-            document.getElementById('pos-stop-color').value = fillLoss;
+            const tOp = s.targetOpacity !== undefined ? s.targetOpacity : 0.2;
+            const sOp = s.stopOpacity !== undefined ? s.stopOpacity : 0.2;
 
-            const tOp = s.targetOpacity !== undefined ? s.targetOpacity : 30;
-            document.getElementById('pos-target-opacity').value = tOp;
-            document.getElementById('pos-target-opacity-label').textContent = tOp + '%';
+            this._syncAdvancedLine('pos-target-color-container', { hexAlpha: this._rgbaToHex(fillProfit, tOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    if (!this.tempStyle.fillColor) this.tempStyle.fillColor = JSON.parse(JSON.stringify(this.activeTool.style.fillColor || {}));
+                    this.tempStyle.fillColor.profit = val.color;
+                    this.tempStyle.targetOpacity = val.opacity;
+                }
+            });
 
-            const sOp = s.stopOpacity !== undefined ? s.stopOpacity : 30;
-            document.getElementById('pos-stop-opacity').value = sOp;
-            document.getElementById('pos-stop-opacity-label').textContent = sOp + '%';
+            this._syncAdvancedLine('pos-stop-color-container', { hexAlpha: this._rgbaToHex(fillLoss, sOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    if (!this.tempStyle.fillColor) this.tempStyle.fillColor = JSON.parse(JSON.stringify(this.activeTool.style.fillColor || {}));
+                    this.tempStyle.fillColor.loss = val.color;
+                    this.tempStyle.stopOpacity = val.opacity;
+                }
+            });
 
-            document.getElementById('pos-text-color').value = this._hexFromColor(s.textColor || '#ffffff');
+            this._syncAdvancedLine('pos-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || '#ffffff') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.textColor = val.color;
+                }
+            });
             document.getElementById('pos-font-size').value = parseInt(fSize);
 
             // Stats
@@ -1154,6 +1123,57 @@ export class ToolSettingsController {
             document.getElementById('pos-always-show').checked = s.alwaysShowStats !== false;
         }
 
+        if (category === 'gann-fan') {
+            const bgOp = s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2;
+            this._syncAdvancedLine('gann-fan-background-container', { hexAlpha: this._rgbaToHex(s.fillColor || s.color || '#2962FF', bgOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.fillColor = val.color;
+                    this.tempStyle.backgroundOpacity = val.opacity;
+                }
+            });
+            document.getElementById('gann-fan-background-show').checked = s.backgroundShow !== false;
+            document.getElementById('gann-fan-labels-show').checked = s.labelsShow !== false;
+        }
+
+        if (category === 'gann-box' || category === 'gann-square') {
+            ['h', 'v'].forEach(axis => {
+                const bgShow = s[axis + 'BackgroundShow'] !== false;
+                const bgOp = s[axis + 'BackgroundOpacity'] !== undefined ? s[axis + 'BackgroundOpacity'] : 0.2;
+                const bgCol = s[axis + 'BackgroundFillColor'] || s.color || '#2962FF';
+                
+                this._syncAdvancedLine(`gann-${axis}-background-container`, { hexAlpha: this._rgbaToHex(bgCol, bgOp) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    onUpdate: (val) => {
+                        this.tempStyle[axis + 'BackgroundFillColor'] = val.color;
+                        this.tempStyle[axis + 'BackgroundOpacity'] = val.opacity;
+                    }
+                });
+                const showEl = document.getElementById(`gann-${axis}-background-show`);
+                if (showEl) showEl.checked = bgShow;
+            });
+
+            // Specific background for Gann Square if it exists (some versions use shared h/v, some have a global one)
+            const sqBgCont = document.getElementById('gann-square-background-container');
+            if (sqBgCont) {
+                const bgOp = s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2;
+                this._syncAdvancedLine('gann-square-background-container', { hexAlpha: this._rgbaToHex(s.fillColor || s.color || '#2962FF', bgOp) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.fillColor = val.color;
+                        this.tempStyle.backgroundOpacity = val.opacity;
+                    }
+                });
+                const sqShowEl = document.getElementById('gann-square-background-show');
+                if (sqShowEl) sqShowEl.checked = s.backgroundShow !== false;
+            }
+        }
         if (category === 'forecast') {
             this._syncAdvancedLine('fc-line-advanced', {
                 hexAlpha: s.color || '#2962FF',
@@ -1167,23 +1187,42 @@ export class ToolSettingsController {
                 }
             });
 
-            document.getElementById('fc-source-text').value = this._hexFromColor(s.sourceTextColor || '#ffffff');
-            document.getElementById('fc-source-bg').value = this._hexFromColor(s.sourceBgColor || '#2962FF');
-            document.getElementById('fc-source-border').value = this._hexFromColor(s.sourceBorderColor || '#2962FF');
+            const fcStates = [
+                { id: 'fc-source-text', prop: 'sourceTextColor', def: '#ffffff' },
+                { id: 'fc-source-bg', prop: 'sourceBgColor', def: '#2962FF' },
+                { id: 'fc-source-border', prop: 'sourceBorderColor', def: '#2962FF' },
+                { id: 'fc-target-text', prop: 'targetTextColor', def: '#ffffff' },
+                { id: 'fc-target-bg', prop: 'targetBgColor', def: '#2962FF' },
+                { id: 'fc-target-border', prop: 'targetBorderColor', def: '#2962FF' },
+                { id: 'fc-success-text', prop: 'successTextColor', def: '#ffffff' },
+                { id: 'fc-success-bg', prop: 'successBgColor', def: '#22AB94' },
+                { id: 'fc-failure-text', prop: 'failureTextColor', def: '#ffffff' },
+                { id: 'fc-failure-bg', prop: 'failureBgColor', def: '#F23645' }
+            ];
 
-            document.getElementById('fc-target-text').value = this._hexFromColor(s.targetTextColor || '#ffffff');
-            document.getElementById('fc-target-bg').value = this._hexFromColor(s.targetBgColor || '#2962FF');
-            document.getElementById('fc-target-border').value = this._hexFromColor(s.targetBorderColor || '#2962FF');
-
-            document.getElementById('fc-success-text').value = this._hexFromColor(s.successTextColor || '#ffffff');
-            document.getElementById('fc-success-bg').value = this._hexFromColor(s.successBgColor || '#22AB94');
-
-            document.getElementById('fc-failure-text').value = this._hexFromColor(s.failureTextColor || '#ffffff');
-            document.getElementById('fc-failure-bg').value = this._hexFromColor(s.failureBgColor || '#F23645');
+            fcStates.forEach(state => {
+                this._syncAdvancedLine(state.id + '-container', { hexAlpha: this._hexFromColor(s[state.prop] || state.def) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    showOpacity: false,
+                    onUpdate: (val) => {
+                        this.tempStyle[state.prop] = val.color;
+                    }
+                });
+            });
         }
 
         if (category === 'bars-pattern') {
-            document.getElementById('bp-color').value = this._hexFromColor(s.color || '#2962FF');
+            this._syncAdvancedLine('bp-color-container', { hexAlpha: this._hexFromColor(s.color || '#2962FF') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.color = val.color;
+                }
+            });
             document.getElementById('bp-mode').value = s.mode || 'hl-bars';
             document.getElementById('bp-mirrored').checked = !!s.mirrored;
             document.getElementById('bp-flipped').checked = !!s.flipped;
@@ -1195,11 +1234,16 @@ export class ToolSettingsController {
 
         if (category === 'line') {
             const isHighlighter = this.activeTool && this.activeTool.type === 'highlighter';
+            const isArrowMarkup = this.activeTool && ['arrow-mark-up', 'arrow-mark-down', 'arrow-marker'].includes(this.activeTool.type);
+
             this._syncAdvancedLine('line-advanced', {
                 hexAlpha: isHighlighter ? (s.highlighterColor || s.color) : s.color,
                 thickness: isHighlighter ? Math.round((s.highlighterWidth || 20) / 5) : (s.width || 1),
                 style: this._dashToKey(s.dash || [])
             }, {
+                showThickness: !isHighlighter && !isArrowMarkup,
+                showStyle: !isHighlighter && !isArrowMarkup,
+                showOpacity: isHighlighter || isArrowMarkup,
                 onUpdate: (val) => {
                     if (isHighlighter) {
                         this.tempStyle.highlighterColor = val.hexAlpha;
@@ -1226,13 +1270,29 @@ export class ToolSettingsController {
                 }
             });
 
-            document.getElementById('range-fill-color').value = this._hexFromColor(s.fillColor || '#2962FF');
+            const fillCol = s.fillColor || '#2962FF';
             const bgOp = s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2;
-            document.getElementById('range-background-opacity').value = Math.round(bgOp * 100);
-            const bgOpLabel = document.getElementById('range-background-opacity-label');
-            if (bgOpLabel) bgOpLabel.textContent = Math.round(bgOp * 100) + '%';
 
-            document.getElementById('range-text-color').value = this._hexFromColor(s.textColor || '#ffffff');
+            this._syncAdvancedLine('range-fill-color-container', { hexAlpha: this._rgbaToHex(fillCol, bgOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.fillColor = val.color;
+                    this.tempStyle.backgroundOpacity = val.opacity;
+                }
+            });
+
+
+            this._syncAdvancedLine('range-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || '#ffffff') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.textColor = val.color;
+                }
+            });
             document.getElementById('range-label-bg-color').value = this._hexFromColor(s.labelBackgroundColor || '#2962FF');
 
             // Stats selection
@@ -1278,40 +1338,87 @@ export class ToolSettingsController {
                 });
             }
 
-            if (fillColorEl) {
+            const fillColorCont = document.getElementById('shape-fill-color-container');
+            if (fillColorCont) {
                 let defaultFill = undefined;
                 if (this.activeTool.type === 'table') defaultFill = '#131722';
-                fillColorEl.value = this._hexFromColor(s.fillColor || defaultFill);
+                let defaultOp = 1; // Default to 100% for annotation tools
+                if (this.activeTool.type === 'table') defaultOp = 1;
+                const bgOpTools = ['callout', 'comment', 'pin', 'price-label', 'table'];
+                const useBgOp = bgOpTools.includes(this.activeTool.type) || s.backgroundOpacity !== undefined;
+                const opVal = s.opacity !== undefined ? s.opacity : (s.backgroundOpacity !== undefined ? s.backgroundOpacity : defaultOp);
+
+                this._syncAdvancedLine('shape-fill-color-container', { hexAlpha: this._rgbaToHex(s.fillColor || defaultFill, opVal) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.fillColor = val.color;
+                        if (useBgOp) {
+                            this.tempStyle.backgroundOpacity = val.opacity;
+                        } else {
+                            this.tempStyle.opacity = val.opacity;
+                        }
+                        this.updatePreview();
+                    }
+                });
             }
 
-            let defaultOp = 0.3;
-            if (this.activeTool.type === 'table') defaultOp = 1;
-            const opVal = Math.round((s.opacity !== undefined ? s.opacity :
-                (s.backgroundOpacity !== undefined ? s.backgroundOpacity : defaultOp)) * 100);
+            // Opacity & labels are now handled inside AdvancedLineSetting
 
-            if (opacityEl) opacityEl.value = opVal;
-            if (opacityLabel) opacityLabel.textContent = opVal + '%';
-            if (textColorEl) textColorEl.value = this._hexFromColor(s.textColor || s.color);
+            if (textColorEl) {
+                this._syncAdvancedLine('shape-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || s.color) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    showOpacity: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.textColor = val.color;
+                    }
+                });
+            }
             if (fontSizeEl) fontSizeEl.value = fSize;
             if (boldEl) boldEl.classList.toggle('active', s.fontWeight === 'bold');
             if (italicEl) italicEl.classList.toggle('active', s.fontStyle === 'italic');
-            if (textContentEl) textContentEl.value = s.text || '';
+            if (textContentEl) {
+                textContentEl.value = s.text || '';
+                textContentEl.oninput = (e) => {
+                    this.tempStyle.text = e.target.value;
+                    this.updatePreview();
+                };
+            }
         }
 
         if (category === 'text' || category === 'table') {
-            const textColorEl = document.getElementById('text-color');
+            const textColorEl_Text = document.getElementById('text-color-container');
             const fontSizeEl = document.getElementById('text-font-size');
             const boldEl = document.getElementById('text-bold');
             const italicEl = document.getElementById('text-italic');
             const textAlignEl = document.getElementById('text-align');
             const textContentEl = document.getElementById('settings-text-content');
 
-            if (textColorEl) textColorEl.value = this._hexFromColor(s.textColor || s.color);
+            if (textColorEl_Text) {
+                this._syncAdvancedLine('text-color-container', { hexAlpha: this._hexFromColor(s.textColor || s.color) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    showOpacity: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.textColor = val.color;
+                    }
+                });
+            }
             if (fontSizeEl) fontSizeEl.value = fSize;
             if (boldEl) boldEl.classList.toggle('active', s.fontWeight === 'bold');
             if (italicEl) italicEl.classList.toggle('active', s.fontStyle === 'italic');
             if (textAlignEl) textAlignEl.value = s.textAlign || 'center';
-            if (textContentEl) textContentEl.value = s.text || '';
+            if (textContentEl) {
+                textContentEl.value = s.text || '';
+                textContentEl.oninput = (e) => {
+                    this.tempStyle.text = e.target.value;
+                    this.updatePreview();
+                };
+            }
             if (category === 'text') {
                 this._syncAdvancedLine('text-line-advanced', {
                     hexAlpha: s.color || '#2962FF',
@@ -1398,9 +1505,9 @@ export class ToolSettingsController {
                 const pGroupB = priceLevels.slice(pHalf);
 
                 const pColA = document.createElement('div');
-                pColA.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                pColA.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
                 const pColB = document.createElement('div');
-                pColB.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                pColB.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
 
                 const makePriceRow = (lvlObj, idxOffset) => {
                     const actualIdx = idxOffset;
@@ -1410,9 +1517,9 @@ export class ToolSettingsController {
                     
                     if (useAdvanced) {
                         const cpContainerId = `fib-level-color-${actualIdx}-${Math.random().toString(36).substr(2, 9)}`;
-                        row.innerHTML = `
-                                    <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''} style="margin:0;">
-                                    <div style="font-size:12px; color:#f0f3fa; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${lvlObj.level}</div>
+                    row.innerHTML = `
+                                    <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''}>
+                                    <div style="font-size: 12px; color: #d1d4dc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${lvlObj.level}</div>
                                     <div id="${cpContainerId}"></div>
                                 `;
                         const cb = row.querySelector('input[type="checkbox"]');
@@ -1446,8 +1553,8 @@ export class ToolSettingsController {
                         row.style.margin = '0';
                         row.style.gap = '4px';
                         row.innerHTML = `
-                                    <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''} style="margin:0;">
-                                    <div style="font-size:12px; color:#f0f3fa; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${lvlObj.level}</div>
+                                    <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''}>
+                                    <div style="font-size: 12px; color: #d1d4dc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${lvlObj.level}</div>
                                     <input type="color" class="settings-color-picker" value="${this._hexFromColor(lvlObj.color)}">
                                 `;
                         const cb = row.querySelector('input[type="checkbox"]');
@@ -1488,9 +1595,9 @@ export class ToolSettingsController {
                 const tGroupB = timeLevels.slice(tHalf);
 
                 const tColA = document.createElement('div');
-                tColA.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                tColA.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
                 const tColB = document.createElement('div');
-                tColB.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                tColB.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
 
                 const makeTimeRow = (lvlObj, idxOffset) => {
                     const actualIdx = idxOffset;
@@ -1499,8 +1606,8 @@ export class ToolSettingsController {
                     row.style.margin = '0';
                     row.style.gap = '4px';
                     row.innerHTML = `
-                                <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''} style="margin:0;">
-                                <div style="font-size:12px; color:#f0f3fa; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${lvlObj.level}</div>
+                                <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''}>
+                                <div style="font-size: 12px; color: #d1d4dc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${lvlObj.level}</div>
                                 <input type="color" class="settings-color-picker" value="${this._hexFromColor(lvlObj.color)}">
                             `;
                     const cb = row.querySelector('input[type="checkbox"]');
@@ -1575,35 +1682,39 @@ export class ToolSettingsController {
                 const groupB = currentLevels.slice(half);
 
                 const colA = document.createElement('div');
-                colA.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                colA.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
                 const colB = document.createElement('div');
-                colB.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                colB.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
 
                 const makeRow = (lvlObj) => {
                     const level = lvlObj.level;
                     const row = document.createElement('div');
-                    row.className = 'settings-row'; row.style.margin = '0'; row.style.gap = '4px'; row.style.alignItems = 'center';
+                    row.className = 'settings-row';
                     const isVisible = visibleLevels.includes(level);
                     const currentColor = levelColors[level] || defaultColors[level] || s.color;
                     const currentWidth = (this.tempStyle.levelWidths && this.tempStyle.levelWidths[level] !== undefined)
                         ? this.tempStyle.levelWidths[level]
                         : (s.levelWidths && s.levelWidths[level] !== undefined ? s.levelWidths[level] : 1);
-                    const useAdvanced = ['fibonacci-circle', 'fibonacci-arcs', 'fibonacci-wedge', 'pitch-fan'].includes(this.activeTool.type);
+                    const useAdvanced = ['fibonacci-circle', 'fibonacci-arcs', 'fibonacci-wedge', 'pitch-fan', 'fibonacci-retracement', 'fibonacci-extension', 'fibonacci-time', 'fibonacci-fan'].includes(this.activeTool.type);
 
                     if (useAdvanced) {
                         const cpContainerId = `fib-row-color-${level.toString().replace('.', '-')}-${Math.random().toString(36).substr(2, 9)}`;
                         row.innerHTML = `
-                                       <input type="checkbox" ${isVisible ? 'checked' : ''} style="margin:0;">
-                                       <div style="font-size:12px; color:#f0f3fa; flex:1; white-space:nowrap;">${lvlObj.value || level}</div>
+                                       <input type="checkbox" ${isVisible ? 'checked' : ''}>
+                                       <div style="font-size: 12px; color: #d1d4dc; flex: 1; white-space: nowrap;">${lvlObj.value || level}</div>
                                        <div id="${cpContainerId}"></div>
                                    `;
                         const cb = row.querySelector('input[type="checkbox"]');
                         const cpContainer = row.querySelector(`#${cpContainerId}`);
 
-                        const isFan = ['pitch-fan'].includes(this.activeTool.type);
+                        const isFan = ['pitch-fan', 'fibonacci-fan'].includes(this.activeTool.type);
+                        const isRetracement = ['fibonacci-retracement', 'fibonacci-extension'].includes(this.activeTool.type);
+                        const isFibTime = this.activeTool.type === 'fibonacci-time';
+                        
                         const adv = new AdvancedLineSetting(cpContainer, {
                             compact: true,
-                            showOpacity: false,
+                            showOpacity: true,
+                            showThickness: !isRetracement || isFibTime,
                             showStyle: isFan,
                             defaultColor: currentColor,
                             defaultThickness: currentWidth,
@@ -1634,8 +1745,8 @@ export class ToolSettingsController {
                         };
                     } else {
                         row.innerHTML = `
-                                       <input type="checkbox" ${isVisible ? 'checked' : ''} style="margin:0;">
-                                       <div style="font-size:12px; color:#f0f3fa; flex:1; white-space:nowrap;">${lvlObj.value || level}</div>
+                                       <input type="checkbox" ${isVisible ? 'checked' : ''}>
+                                       <div style="font-size: 12px; color: #d1d4dc; flex: 1; white-space: nowrap;">${lvlObj.value || level}</div>
                                        <input type="color" class="settings-color-picker" value="${this._hexFromColor(currentColor)}">
                                        ${isSpecializedFib ? `
                                        <div class="custom-width-picker">
@@ -1785,34 +1896,44 @@ export class ToolSettingsController {
                 const vPos = document.getElementById('fib-labels-v-position');
                 if (vPos) vPos.value = s.labelsVerticalPosition || 'bottom';
 
-                document.getElementById('fib-background-row').style.display = isSpiral ? 'none' : '';
-                document.getElementById('fib-background-show').checked = s.backgroundShow !== false;
-                document.getElementById('fib-background-show').onchange = (e) => {
-                    this.tempStyle.backgroundShow = e.target.checked;
-                    this.updatePreview();
-                };
-                document.getElementById('fib-reverse-row').style.display = (isCircle || isSpiral || isWedgeOrArcs || isPitchFan) ? 'none' : '';
-
-                const bgColorEl = document.getElementById('fib-background-color');
-                if (isChannel || isCircle || this.activeTool.type === 'fibonacci-retracement' || this.activeTool.type === 'fibonacci-extension' || this.activeTool.type === 'fibonacci-time' || isSpecializedFib || isPitchFan || isFibFan) {
-                    bgColorEl.style.display = 'none';
-                } else {
-                    bgColorEl.style.display = '';
-                    bgColorEl.value = this._hexFromColor(s.fillColor || s.color);
+                const bgColorRow = document.getElementById('fib-background-row');
+                if (bgColorRow) {
+                    if (isSpiral || this.activeTool.type === 'cyclic-lines') {
+                        bgColorRow.style.display = 'none';
+                    } else {
+                        bgColorRow.style.display = '';
+                    }
                 }
-                const currentOp = s.opacity !== undefined ? s.opacity : 0.2;
-                const opVal = Math.round(currentOp * 100);
-                document.getElementById('fib-opacity').value = opVal;
-                document.getElementById('fib-opacity-label').textContent = opVal + '%';
-                document.getElementById('fib-opacity').oninput = (e) => {
-                    const val = parseInt(e.target.value);
-                    this.tempStyle.opacity = val / 100;
-                    document.getElementById('fib-opacity-label').textContent = val + '%';
-                    this.updatePreview();
-                };
+                
+                const backgroundShowEl = document.getElementById('fib-background-show');
+                if (backgroundShowEl) {
+                    backgroundShowEl.checked = s.backgroundShow !== false;
+                    backgroundShowEl.onchange = (e) => {
+                        this.tempStyle.backgroundShow = e.target.checked;
+                        this.updatePreview();
+                    };
+                }
+
+                const opVal = s.opacity !== undefined ? s.opacity : (s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2);
+                const opSlider = document.getElementById('fib-background-opacity');
+                const opLabel = document.getElementById('fib-background-opacity-label');
+                if (opSlider && opLabel) {
+                    const pct = Math.round(opVal * 100);
+                    opSlider.value = pct;
+                    opLabel.textContent = pct + '%';
+                    opSlider.oninput = (e) => {
+                        const val = parseInt(e.target.value);
+                        opLabel.textContent = val + '%';
+                        this.tempStyle.opacity = val / 100;
+                        this.tempStyle.backgroundOpacity = val / 100;
+                        this.updatePreview();
+                    };
+                }
+
 
                 const fontSizeRow = document.getElementById('fib-font-size-row');
                 if (fontSizeRow) fontSizeRow.style.display = (isSpiral || isPitchFan) ? 'none' : '';
+
             }
 
             document.getElementById('fib-reverse').onchange = (e) => {
@@ -1823,7 +1944,28 @@ export class ToolSettingsController {
         }
 
         if (category === 'chart-patterns') {
-            document.getElementById('cp-text-color').value = this._hexFromColor(s.textColor || '#ffffff');
+            this._syncAdvancedLine('cp-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || '#ffffff') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.textColor = val.color;
+                }
+            });
+
+            const cpBgOp = s.opacity !== undefined ? s.opacity : (s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.3);
+            this._syncAdvancedLine('cp-background-color-container', { hexAlpha: this._rgbaToHex(s.fillColor || s.color, cpBgOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.fillColor = val.color;
+                    this.tempStyle.opacity = val.opacity;
+                    this.tempStyle.backgroundOpacity = val.opacity;
+                }
+            });
+
             document.getElementById('cp-font-size').value = parseInt(fSize);
             document.getElementById('cp-bold').classList.toggle('active', s.fontWeight === 'bold');
             document.getElementById('cp-italic').classList.toggle('active', s.fontStyle === 'italic');
@@ -1840,15 +1982,10 @@ export class ToolSettingsController {
             });
 
             document.getElementById('cp-background-show').checked = s.backgroundShow !== false;
-            document.getElementById('cp-background-color').value = this._hexFromColor(s.fillColor || s.color);
-            const opVal = Math.round((s.opacity !== undefined ? s.opacity : 0.3) * 100);
-            document.getElementById('cp-background-opacity').value = opVal;
-            document.getElementById('cp-background-opacity-label').textContent = opVal + '%';
+
         }
 
         if (category === 'elliott-waves') {
-            const ewColorEl = document.getElementById('ew-color');
-            const ewTextColorEl = document.getElementById('ew-text-color');
             this._syncAdvancedLine('ew-advanced', {
                 hexAlpha: s.color || '#2962FF',
                 thickness: s.width || 2
@@ -1859,7 +1996,16 @@ export class ToolSettingsController {
                     this.tempStyle.width = val.thickness;
                 }
             });
-            if (ewTextColorEl) ewTextColorEl.value = this._hexFromColor(s.textColor || '#ffffff');
+
+            this._syncAdvancedLine('ew-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || '#ffffff') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.textColor = val.color;
+                }
+            });
         }
 
         if (category === 'cycles') {
@@ -1929,9 +2075,9 @@ export class ToolSettingsController {
             const groupB = filtered.slice(half);
 
             const colA = document.createElement('div');
-            colA.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+            colA.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
             const colB = document.createElement('div');
-            colB.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+            colB.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
 
             const levelsContainer = document.getElementById('pitchfork-levels-container');
             levelsContainer.innerHTML = '';
@@ -2025,22 +2171,44 @@ export class ToolSettingsController {
             if (labelsBottomEl) labelsBottomEl.checked = !!s.labelsShowBottom;
 
             const hBgShowEl = document.getElementById('gann-h-background-show');
-            if (hBgShowEl) hBgShowEl.checked = s.hBackgroundShow !== false;
+            if (hBgShowEl) {
+                hBgShowEl.checked = s.hBackgroundShow !== false;
+                hBgShowEl.onchange = (e) => { this.tempStyle.hBackgroundShow = e.target.checked; this.updatePreview(); };
+            }
 
-            const hOp = Math.round((s.hBackgroundOpacity !== undefined ? s.hBackgroundOpacity : 0.08) * 100);
+            const hOp = Math.round((s.hBackgroundOpacity !== undefined ? s.hBackgroundOpacity : 0.2) * 100);
             const hOpEl = document.getElementById('gann-h-opacity');
             const hOpLabel = document.getElementById('gann-h-opacity-label');
-            if (hOpEl) hOpEl.value = hOp;
-            if (hOpLabel) hOpLabel.textContent = hOp + '%';
+            if (hOpEl && hOpLabel) {
+                hOpEl.value = hOp;
+                hOpLabel.textContent = hOp + '%';
+                hOpEl.oninput = (e) => {
+                    const val = parseInt(e.target.value);
+                    hOpLabel.textContent = val + '%';
+                    this.tempStyle.hBackgroundOpacity = val / 100;
+                    this.updatePreview();
+                };
+            }
 
             const vBgShowEl = document.getElementById('gann-v-background-show');
-            if (vBgShowEl) vBgShowEl.checked = s.vBackgroundShow !== false;
+            if (vBgShowEl) {
+                vBgShowEl.checked = s.vBackgroundShow !== false;
+                vBgShowEl.onchange = (e) => { this.tempStyle.vBackgroundShow = e.target.checked; this.updatePreview(); };
+            }
 
-            const vOp = Math.round((s.vBackgroundOpacity !== undefined ? s.vBackgroundOpacity : 0.08) * 100);
+            const vOp = Math.round((s.vBackgroundOpacity !== undefined ? s.vBackgroundOpacity : 0.2) * 100);
             const vOpEl = document.getElementById('gann-v-opacity');
             const vOpLabel = document.getElementById('gann-v-opacity-label');
-            if (vOpEl) vOpEl.value = vOp;
-            if (vOpLabel) vOpLabel.textContent = vOp + '%';
+            if (vOpEl && vOpLabel) {
+                vOpEl.value = vOp;
+                vOpLabel.textContent = vOp + '%';
+                vOpEl.oninput = (e) => {
+                    const val = parseInt(e.target.value);
+                    vOpLabel.textContent = val + '%';
+                    this.tempStyle.vBackgroundOpacity = val / 100;
+                    this.updatePreview();
+                };
+            }
 
             // Reverse settings
             const revEl = document.getElementById('gann-reverse');
@@ -2073,13 +2241,12 @@ export class ToolSettingsController {
             const makeLevelRow = (val, isVisible, levelColor, levelWidth, onToggle, onColor, onWidth) => {
                 const row = document.createElement('div');
                 row.className = 'settings-row';
-                row.style.cssText = 'display:flex; align-items:center; gap:4px; margin:0;';
 
                 const sanitizedVal = val.toString().replace(/[^a-z0-9]/gi, '-');
                 const cpContainerId = `gann-level-color-${sanitizedVal}-${Math.random().toString(36).substr(2, 9)}`;
                 row.innerHTML = `
-                            <input type="checkbox" ${isVisible ? 'checked' : ''} style="margin:0;">
-                            <div style="font-size:11px; color:#f0f3fa; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${val}</div>
+                            <input type="checkbox" ${isVisible ? 'checked' : ''}>
+                            <div style="font-size: 11px; color: #d1d4dc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${val}</div>
                             <div id="${cpContainerId}"></div>
                         `;
                 const cb = row.querySelector('input[type="checkbox"]');
@@ -2088,18 +2255,14 @@ export class ToolSettingsController {
                 const isGannFan = this.activeTool.type === 'gann-fan';
                 const adv = new AdvancedLineSetting(cpContainer, {
                     compact: true,
-                    showOpacity: false,
+                    showOpacity: true,
                     showStyle: isGannFan,
                     defaultColor: levelColor,
                     defaultThickness: levelWidth,
-                    defaultStyle: 'solid', // Gann tools usually don't have per-level style in state, but we support it now
+                    defaultStyle: 'solid',
                     onChange: (v) => {
-                        // Compatibility with existing callbacks
                         onColor({ target: { value: v.hexAlpha } });
-                        onWidth(v.thickness);
-                        // If Gann Fan, we might need a way to save style per level too, 
-                        // but for now we follow the existing Gann Fan state structure if it exists.
-                        // Actually Gann Fan ratios usually just have color and width in the state array.
+                        if (onWidth) onWidth(v.thickness);
                     }
                 });
 
@@ -2139,9 +2302,9 @@ export class ToolSettingsController {
                 const groupB = ratios.slice(half);
 
                 const colA = document.createElement('div');
-                colA.style.cssText = 'display:flex; flex-direction:column; gap:4px; flex:1;';
+                colA.style.cssText = 'display:flex; flex-direction:column; gap:0; flex:1;';
                 const colB = document.createElement('div');
-                colB.style.cssText = 'display:flex; flex-direction:column; gap:4px; flex:1;';
+                colB.style.cssText = 'display:flex; flex-direction:column; gap:0; flex:1;';
 
                 const addRow = (parent, r, idxOffset) => {
                     const idx = idxOffset;
@@ -2171,11 +2334,24 @@ export class ToolSettingsController {
                 container.appendChild(colB);
 
                 // Sync background and labels
-                document.getElementById('gann-fan-background-show').checked = s.backgroundShow !== false;
+                const bgShowEl = document.getElementById('gann-fan-background-show');
+                bgShowEl.checked = s.backgroundShow !== false;
+                bgShowEl.onchange = (e) => { this.tempStyle.backgroundShow = e.target.checked; this.updatePreview(); };
+
                 const bgOp = Math.round((s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2) * 100);
-                document.getElementById('gann-fan-background-opacity').value = bgOp;
-                document.getElementById('gann-fan-background-opacity-label').textContent = bgOp + '%';
+                const bgOpEl = document.getElementById('gann-fan-background-opacity');
+                const bgOpLabel = document.getElementById('gann-fan-background-opacity-label');
+                bgOpEl.value = bgOp;
+                bgOpLabel.textContent = bgOp + '%';
+                bgOpEl.oninput = (e) => {
+                    const val = parseInt(e.target.value);
+                    bgOpLabel.textContent = val + '%';
+                    this.tempStyle.backgroundOpacity = val / 100;
+                    this.updatePreview();
+                };
+
                 document.getElementById('gann-fan-labels-show').checked = s.labelsShow !== false;
+                document.getElementById('gann-fan-labels-show').onchange = (e) => { this.tempStyle.labelsShow = e.target.checked; this.updatePreview(); };
 
             } else {
                 const populateLevels = (containerId, levelsKey, visibleKey, colorsKey) => {
@@ -2263,7 +2439,7 @@ export class ToolSettingsController {
                 bgShow.checked = s.squareBackgroundShow !== false;
                 bgShow.onchange = (e) => { this.tempStyle.squareBackgroundShow = e.target.checked; this.updatePreview(); };
 
-                const currentArcOp = Math.round((s.squareBackgroundOpacity ?? 0.15) * 100);
+                const currentArcOp = Math.round((s.squareBackgroundOpacity ?? 0.2) * 100);
                 document.getElementById('gann-square-background-opacity').value = currentArcOp;
                 document.getElementById('gann-square-background-opacity-label').textContent = currentArcOp + '%';
                 document.getElementById('gann-square-background-opacity').oninput = (e) => {
@@ -2350,7 +2526,7 @@ export class ToolSettingsController {
             row.className = 'settings-coords-grid';
             const barIndex = this.chart.timeToBar(p.timestamp);
             row.innerHTML = `
-                        <div style="font-size:12px;color:#787b86;">#${i + 1}</div>
+                        <div style="font-size: 11px; color: #d1d4dc;">#${i + 1}</div>
                         <input type="text" class="settings-input-small" value="${this.chart.formatPrice ? this.chart.formatPrice(p.price) : p.price.toFixed(2)}" data-idx="${i}" data-type="price">
                         <input type="text" class="settings-input-small" value="${barIndex}" data-idx="${i}" data-type="bar">
                     `;
@@ -2434,11 +2610,29 @@ export class ToolSettingsController {
             this.activeTool.points = JSON.parse(JSON.stringify(this.backupPoints));
             this.chart.render();
         }
+        if (this.chart.undoStack.length > 0) this.chart.undoStack.pop();
         this.hide();
     }
 
     apply() {
         if (!this.activeTool) return;
+
+        // Save history of the state BEFORE the settings were changed
+        // Temporarily revert to backup to capture the clean state
+        const currentStyle = JSON.parse(JSON.stringify(this.activeTool.style || {}));
+        const currentText = this.activeTool.text;
+        const currentName = this.activeTool.name;
+
+        this.activeTool.style = this.backupStyle;
+        this.activeTool.text = this.backupText;
+        this.activeTool.name = this.backupName;
+
+        this.chart.saveHistory();
+
+        // Re-apply the previewed/temp changes
+        this.activeTool.style = currentStyle;
+        this.activeTool.text = currentText;
+        this.activeTool.name = currentName;
 
         // Sync custom name directly to the tool object (not style)
         if (this.tempStyle.name !== undefined) {
@@ -2503,10 +2697,11 @@ export class ToolSettingsController {
         // Jika ini indikator, simpan layout state secara otomatis.
         // Jika ini gambar, panggil syncWithDatabase agar langsung tersimpan ke server (Auto-save).
         if (isIndicator) {
-            if (window.autoSaveLayoutViewState) window.autoSaveLayoutViewState();
+            this.chart.isLayoutDirty = true;
+            if (this.chart._notifyDirtyChange) this.chart._notifyDirtyChange();
         } else {
             this.chart.markToolDirty(this.activeTool, 'update');
-            this.chart.syncWithDatabase(); // Auto-sync for drawing settings
+            // this.chart.syncWithDatabase(); // DISABLED AUTO-SYNC
         }
 
         this.chart.render();

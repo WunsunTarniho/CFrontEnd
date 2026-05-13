@@ -10,12 +10,13 @@ import { IndicatorsModalController } from './indicators-modal.js';
 import { ScriptEditorController } from './script-editor.js';
 import { LayoutMenuController } from './layout-menu-controller.js';
 import { ChartSettingsController } from './chart-settings.js';
+import { IndicatorSettingsController } from './indicator-settings.js';
+
 import {
     changeTimeframe,
     fetchMarketHistory,
     initMarketSession,
-    saveCurrentLayout,
-    autoSaveLayoutViewState
+    saveCurrentLayout
 } from './data-service.js';
 import {
     updateClock,
@@ -38,7 +39,6 @@ window.closeTfPopup = closeTfPopup;
 window.setTfActive = setTfActive;
 window.setChartModeActive = setChartModeActive;
 window.saveCurrentLayout = saveCurrentLayout;
-window.autoSaveLayoutViewState = autoSaveLayoutViewState; // NEW: Expose for library usage
 window.searchStock = searchStock;
 window.setSearchTicker = setSearchTicker;
 
@@ -74,15 +74,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         },
         onRemoveIndicator: (indicator) => {
-            const activeScript = localStorage.getItem('activeZenScript');
-            if (activeScript) {
-                try {
-                    const stored = JSON.parse(activeScript);
-                    if (stored.code === indicator.script) {
-                        localStorage.removeItem('activeZenScript');
-                        console.log("Deactivated script persistent state removed.");
-                    }
-                } catch (e) { }
+            // Indicator removed from chart
+        },
+        onTimeframeChange: (tf, v, u) => {
+            if (window.changeTimeframe) {
+                return window.changeTimeframe(tf, v, u, true);
+            }
+        },
+        onSymbolChange: (symbol, exchange, originalSymbol) => {
+            if (window.initMarketSession) {
+                return window.initMarketSession(null, { symbol, exchange, original_symbol: originalSymbol }, true, true);
             }
         }
     });
@@ -101,6 +102,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.scriptEditorController = new ScriptEditorController(window.chart);
     window.layoutMenuController = new LayoutMenuController(window.chart);
     window.chartSettingsController = new ChartSettingsController(window.chart);
+    window.indicatorSettingsController = new IndicatorSettingsController(window.chart);
+
+
+    // Link indicator actions to controllers
+    window.chart.onIndicatorSource = (id, script) => {
+        const ind = window.chart.indicators.find(i => i.id === id || i.indicatorId === id);
+        window.scriptEditorController.show({
+            id: id,
+            name: ind ? ind.name : "Indicator",
+            script: script
+        });
+    };
 
     // Load global settings
     const savedGlobalSettings = localStorage.getItem('chart_global_settings');
@@ -126,22 +139,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initial data load
     await initMarketSession();
 
-    // Load active ZenScript if exists
-    const activeScript = localStorage.getItem('activeZenScript');
-    if (activeScript) {
-        try {
-            const { name, code } = JSON.parse(activeScript);
-            if (window.chart && code) {
-                window.chart.addIndicator(name, code);
-            }
-        } catch (e) {
-            console.error("Error loading active script:", e);
-        }
-    }
-
-    // FINAL RESET: Ensure initial load doesn't trigger "unsaved changes"
+    // FINAL RESET: Ensure initial load doesn't trigger "unsaved changes" and starts with clean history
     if (window.chart) {
         window.chart.isLayoutDirty = false;
+        window.chart.clearHistory();
+        if (window.chart._notifyDirtyChange) window.chart._notifyDirtyChange();
     }
 });
 
@@ -487,6 +489,10 @@ function setupSearchModal() {
             searchInput.dataset.quote = item.dataset.quote;
             searchInput.dataset.originalSymbol = originalSymbol;
             closeSearchModal();
+
+            // Capture current state in history before moving to new symbol
+            if (window.chart) window.chart.saveHistory();
+
             await initMarketSession(null, { 
                 symbol: symbol,
                 exchange: exchange,

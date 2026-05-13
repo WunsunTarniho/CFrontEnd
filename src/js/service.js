@@ -141,7 +141,7 @@ export const setDefaultLayout = async (id) => {
     const response = await fetch(`${API_BASE}/api/v1/layouts/${id}/default`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: "1" })
+        body: JSON.stringify({ userId: "6633b499e1a90c2e34789abc" })
     });
     if (!response.ok) throw new Error('Failed to set default layout');
     return await response.json();

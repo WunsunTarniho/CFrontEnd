@@ -942,24 +942,36 @@ export class SidebarController {
 
         if (!window.chart || !window.chart.drawingTools) return;
 
-        const tools = window.chart.drawingTools;
+        const currentSymbol = (window.chart.symbol || '').toUpperCase();
+        const currentExchange = (window.chart.exchange || '').toUpperCase();
+        const currentSymbolId = window.chart.symbolId;
+
+        // NEW: Filter tools belonging to the current context only
+        const filteredTools = window.chart.drawingTools.filter(t => {
+            const tSymbol = (t.symbol || '').toUpperCase();
+            const tExchange = (t.exchange || '').toUpperCase();
+            
+            return (tSymbol === currentSymbol) && 
+                   (tExchange === currentExchange) && 
+                   (t.symbolId === currentSymbolId || !t.symbolId || !currentSymbolId);
+        });
 
         // Robust check to avoid flickering: compare state instead of force-rebuilding
         const selectedId = window.chart.selectedTool ? (window.chart.selectedTool.id || 'selected') : 'none';
-        const hiddenCount = tools.filter(t => t.isHidden).length;
-        const stateKey = `${tools.length}-${selectedId}-${hiddenCount}`;
+        const hiddenCount = filteredTools.filter(t => t.isHidden).length;
+        const stateKey = `${filteredTools.length}-${selectedId}-${hiddenCount}`;
 
         if (!force && this._lastStateKey === stateKey) return;
         this._lastStateKey = stateKey;
 
         this.objectTreeContainer.innerHTML = '';
 
-        if (tools.length === 0) {
+        if (filteredTools.length === 0) {
             this.objectTreeContainer.innerHTML = '<div style="padding: 20px; color: #787b86; text-align: center; font-size: 13px;">No objects on chart</div>';
             return;
         }
 
-        tools.forEach((tool, index) => {
+        filteredTools.forEach((tool, index) => {
             const item = document.createElement('div');
             item.className = 'object-item';
             item.dataset.itemIndex = index;
@@ -1207,10 +1219,23 @@ export class SidebarController {
                             const isTop = (ue.clientY - overRect.top) < overRect.height / 2;
 
                             if (this.draggedItemIndex !== targetIndex) {
-                                let newIndex = isTop ? targetIndex : targetIndex + 1;
-                                const movedTool = window.chart.drawingTools.splice(this.draggedItemIndex, 1)[0];
-                                if (newIndex > this.draggedItemIndex) newIndex--;
-                                window.chart.drawingTools.splice(newIndex, 0, movedTool);
+                                // Map filtered indices to REAL indices in the global array
+                                const toolToMove = filteredTools[this.draggedItemIndex];
+                                const toolAtTarget = filteredTools[targetIndex];
+                                
+                                const realIndexSource = window.chart.drawingTools.indexOf(toolToMove);
+                                if (realIndexSource === -1) return;
+
+                                // Remove from old position
+                                const movedTool = window.chart.drawingTools.splice(realIndexSource, 1)[0];
+                                
+                                // Find new real index relative to target tool
+                                let realIndexTarget = window.chart.drawingTools.indexOf(toolAtTarget);
+                                if (!isTop) realIndexTarget++;
+                                
+                                // Insert at new real position
+                                window.chart.drawingTools.splice(realIndexTarget, 0, movedTool);
+                                
                                 window.chart.drawingTools.forEach(t => window.chart.markToolDirty(t, 'update'));
                                 window.chart.render();
                             }
@@ -1229,7 +1254,7 @@ export class SidebarController {
             this.objectTreeContainer.appendChild(item);
         });
 
-        this._lastUpdateTick = tools.length;
+        this._lastUpdateTick = filteredTools.length;
     }
 
     _getToolIcon(tool) {
@@ -1443,8 +1468,12 @@ export class SidebarController {
         if (skipLoadOnChart) return;
 
         const layoutId = window.chart ? window.chart.currentLayoutId : null;
+        
+        // Capture current state in history before moving to new symbol
+        if (window.chart) window.chart.saveHistory();
+
         initMarketSession(layoutId, {
-            ticker: item.symbol,
+            symbol: item.symbol,
             exchange: item.exchange,
             market: item.market,
             original_symbol: item.original_symbol || ''
@@ -1741,7 +1770,7 @@ export class SidebarController {
                 lastTicker: window.chart.symbol,
                 lastExchange: window.chart.exchange,
                 chartState,
-                userId: "1"
+                userId: "6633b499e1a90c2e34789abc"
             });
             this.currentLayouts.push(newLayout);
             this.switchLayout(newLayout);
@@ -1787,6 +1816,10 @@ export class SidebarController {
                     const stock = results[0];
                     searchInput.dataset.stockId = stock.id;
                     searchInput.value = stock.ticker;
+                    
+                    // Capture current state in history before moving to new symbol
+                    if (window.chart) window.chart.saveHistory();
+
                     if (typeof window.initMarketSession === 'function') {
                         await window.initMarketSession();
                     }

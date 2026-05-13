@@ -163,7 +163,7 @@ export class LayoutMenuController {
 
                     const newLayout = await saveLayout({
                         name: newName,
-                        userId: "1",
+                        userId: "6633b499e1a90c2e34789abc",
                         sourceLayoutId: this.chart.currentLayoutId,
                         lastTicker: this.chart.symbol,
                         lastExchange: this.chart.exchange,

@@ -69,7 +69,7 @@ export class IndicatorsModalController {
 
     async fetchUserIndicators() {
         try {
-            const response = await fetch('http://localhost:5000/api/v1/indicators?userId=1');
+            const response = await fetch('http://localhost:5000/api/v1/indicators?userId=6633b499e1a90c2e34789abc');
             const result = await response.json();
             
             if (result.success && result.data.length > 0) {
@@ -194,7 +194,7 @@ export class IndicatorsModalController {
             const response = await fetch('http://localhost:5000/api/v1/indicators', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, script, userId: "1" })
+                body: JSON.stringify({ name, script, userId: "6633b499e1a90c2e34789abc" })
             });
             const result = await response.json();
             if (result.success) {

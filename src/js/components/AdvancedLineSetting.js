@@ -591,11 +591,11 @@ export class AdvancedLineSetting {
         const rect = this.container.getBoundingClientRect();
         const popoverWidth = 240;
 
-        let left = rect.left;
-        let top = rect.bottom + 8;
+        let left = rect.right + 8;
+        let top = rect.top;
 
         if (left + popoverWidth > window.innerWidth) {
-            left = window.innerWidth - popoverWidth - 10;
+            left = rect.left - popoverWidth - 8;
         }
 
         const popoverHeight = this.popover.offsetHeight || 250;

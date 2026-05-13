@@ -1,6 +1,5 @@
 import { AdvancedLineSetting } from './components/AdvancedLineSetting.js';
 import { updateClock } from './utils.js';
-import { autoSaveLayoutViewState } from './data-service.js';
 
 export class ChartSettingsController {
     constructor(chart) {
@@ -69,12 +68,9 @@ export class ChartSettingsController {
 
                 if (callback) callback(val);
                 
-                // NEW: Auto-save view state instead of manual dirty flag
-                if (window.autoSaveLayoutViewState) {
-                    window.autoSaveLayoutViewState();
-                } else if (autoSaveLayoutViewState) {
-                    autoSaveLayoutViewState();
-                }
+                // NEW: Mark as dirty instead of auto-save
+                this.chart.isLayoutDirty = true;
+                if (this.chart._notifyDirtyChange) this.chart._notifyDirtyChange();
 
                 this.chart.render(true);
             });
@@ -100,12 +96,9 @@ export class ChartSettingsController {
                         }
                     });
 
-                    // NEW: Auto-save view state instead of manual dirty flag
-                    if (window.autoSaveLayoutViewState) {
-                        window.autoSaveLayoutViewState();
-                    } else if (autoSaveLayoutViewState) {
-                        autoSaveLayoutViewState();
-                    }
+                    // NEW: Mark as dirty instead of auto-save
+                    this.chart.isLayoutDirty = true;
+                    if (this.chart._notifyDirtyChange) this.chart._notifyDirtyChange();
 
                     this.chart.render(true);
                 }
@@ -130,7 +123,8 @@ export class ChartSettingsController {
                 if (color2) color2.style.display = bgTypeEl.value === 'gradient' ? 'block' : 'none';
                 this.chart.backgroundType = bgTypeEl.value;
                 
-                if (window.autoSaveLayoutViewState) window.autoSaveLayoutViewState();
+                this.chart.isLayoutDirty = true;
+                if (this.chart._notifyDirtyChange) this.chart._notifyDirtyChange();
                 
                 this.chart.render(true);
             });
@@ -207,7 +201,8 @@ export class ChartSettingsController {
 
                     dropdown.classList.remove('show');
                     
-                    if (window.autoSaveLayoutViewState) window.autoSaveLayoutViewState();
+                    this.chart.isLayoutDirty = true;
+                    if (this.chart._notifyDirtyChange) this.chart._notifyDirtyChange();
                     
                     this.chart.render(true);
                 };
@@ -575,6 +570,7 @@ export class ChartSettingsController {
     show() {
         if (this.backdrop) {
             this.chart.isSettingsOpen = true;
+            this.chart.saveHistory();
             this.snapshot = this.chart.getChartState();
             this.backdrop.style.display = 'flex';
             this.showSymbolSection(this.chart.chartMode);
@@ -634,7 +630,9 @@ export class ChartSettingsController {
             if (revert && this.snapshot) {
                 this.chart.applyChartState(this.snapshot);
                 this.chart.render(true);
-                if (window.autoSaveLayoutViewState) window.autoSaveLayoutViewState();
+                if (this.chart.undoStack.length > 0) this.chart.undoStack.pop();
+                this.chart.isLayoutDirty = true;
+                if (this.chart._notifyDirtyChange) this.chart._notifyDirtyChange();
             }
             this.snapshot = null;
         }

@@ -74,7 +74,7 @@ export async function fetchMarketHistory(marketInfo, timeframe, endTime = null, 
  * --------------------------------------------------------------------------
  */
 
-export async function initMarketSession(layoutId = null, forcedMarket = null) {
+export async function initMarketSession(layoutId = null, forcedMarket = null, skipLayoutRestore = false, skipDirty = false) {
     if (!window.chart) return;
     window.chart.isLoading = true;
     window.chart.isRestoring = true;
@@ -83,14 +83,14 @@ export async function initMarketSession(layoutId = null, forcedMarket = null) {
         // 1. Identify which layout and symbol to load
         const layouts = await getLayouts();
         const activeLayout = resolveActiveLayout(layouts, layoutId);
-        console.log(`[DataService] determineTargetSymbol start with forced:`, forcedMarket);
-        const { symbol, exchange, originalSymbol, market, type } = determineTargetSymbol(activeLayout, forcedMarket);
-        console.log(`[DataService] Resolved from determineTargetSymbol:`, { symbol, exchange, originalSymbol, market, type });
+        const isInitialLoad = !window.chart.symbol;
 
-        // 2. Resolve full market metadata (type, name, etc)
+        const { symbol, exchange, originalSymbol, market, type } = determineTargetSymbol(activeLayout, forcedMarket);
         const marketData = await resolveMarketMetadata(symbol, exchange, originalSymbol, market, type);
-        console.log(`[DataService] Resolved marketData:`, marketData);
-        const timeframe = resolveTimeframe(activeLayout);
+        
+        // Use database timeframe on first load, else preserve session timeframe
+        const timeframe = isInitialLoad ? resolveTimeframe(activeLayout) : (window.chart.timeframe || '1d');
+        const chartMode = isInitialLoad ? (activeLayout?.chartState?.chartMode || 'candle') : (window.chart.chartMode || 'candle');
 
         console.log(`[DataService] Loading: ${marketData.symbol} @ ${marketData.exchange} [${timeframe}]`, marketData);
 
@@ -108,38 +108,44 @@ export async function initMarketSession(layoutId = null, forcedMarket = null) {
 
         const history = await fetchMarketHistory(marketData, timeframe);
         applyDataToChart(marketData, history, timeframe);
+        window.chart.chartMode = chartMode; // Preserve current mode during switch
 
         // 5. Restore Session State (Indicators, Drawings, etc)
-        if (activeLayout) {
-            // Note: activeLayout.id might be undefined based on backend response
-            if (activeLayout.id) {
-                touchLayout(activeLayout.id).catch(() => { });
-                window.chart.currentLayoutId = activeLayout.id;
-            }
-
-            window.dispatchEvent(new CustomEvent('layout-changed', { detail: { name: activeLayout.name } }));
-
-            // Restore Full Chart State (Colors, Grids, Mode, etc.)
-            if (activeLayout.chartState && window.chart) {
-                window.chart.applyChartState(activeLayout.chartState);
-
-                // Sync UI elements
-                const mode = window.chart.chartMode;
-                if (window.updateChartModeUI) window.updateChartModeUI(mode);
-                if (window.chartSettingsController) window.chartSettingsController.syncInputsWithChart();
-            }
-
+        if (activeLayout && !skipLayoutRestore) {
+            // A. ALWAYS restore Drawing Tools for the new symbol
             await restoreDrawingTools(activeLayout.id, marketData.symbol, marketData.exchange, marketData.id);
-            if (window.chart.clearIndicators) window.chart.clearIndicators();
-            await restoreIndicators(activeLayout.indicators);
+
+            // B. ONLY restore Indicators and general Layout state if it's the FIRST load
+            if (isInitialLoad) {
+                if (activeLayout.id) {
+                    touchLayout(activeLayout.id).catch(() => { });
+                    window.chart.currentLayoutId = activeLayout.id;
+                }
+
+                window.dispatchEvent(new CustomEvent('layout-changed', { detail: { name: activeLayout.name } }));
+
+                if (activeLayout.chartState && window.chart) {
+                    window.chart.applyChartState(activeLayout.chartState);
+                    const mode = window.chart.chartMode;
+                    if (window.updateChartModeUI) window.updateChartModeUI(mode);
+                    if (window.chartSettingsController) window.chartSettingsController.syncInputsWithChart();
+                }
+
+                if (window.chart.clearIndicators) window.chart.clearIndicators();
+                await restoreIndicators(activeLayout.indicators);
+            }
         }
     } catch (error) {
         console.error('[DataService] Critical error during initMarketSession:', error);
     } finally {
-        window.chart.isRestoring = false;
+        // Only reset isRestoring if we are NOT in a skipDirty (undo/redo) flow.
+        // If we ARE in undo/redo, the restoreState method will handle resetting it.
+        if (!skipDirty) {
+            window.chart.isRestoring = false;
+        }
         // Ensure a fallback marketData object exists for finalizeSessionLoad if everything crashed
         const fallbackData = forcedMarket || { symbol: window.chart?.symbol || 'BTCUSDT' };
-        finalizeSessionLoad(fallbackData);
+        finalizeSessionLoad(fallbackData, skipDirty);
     }
 }
 
@@ -245,23 +251,26 @@ function applyDataToChart(marketData, history, timeframe) {
     window.chart.symbolId = marketData.id;
     window.chart.tickSize = marketData.tickSize || 0;
     window.chart.rawData = candles;
-    window.chart.setTimeframe(timeframe);
-    window.chart.marketStatus = history.meta?.marketStatus || 'REGULAR';
-
-    if (candles.length > 0) {
-        window.chart.syncWithDatabase().catch(() => { });
+    if (window.chart._indicatorCalcDebounce !== undefined) {
+        window.chart._indicatorCalcDebounce = false; // Disable debounce for major reload
     }
+    window.chart.setTimeframe(timeframe, true); // Force processing for new rawData
 
+    window.chart.marketStatus = history.meta?.marketStatus || 'REGULAR';
     window.chart.connectWebSocket();
 }
 
-function finalizeSessionLoad(marketData) {
+function finalizeSessionLoad(marketData, skipDirty = false) {
     if (window.setSearchTicker) window.setSearchTicker(marketData.symbol);
     window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
     window.chart.isLoading = false;
-    window.chart.render();
-    window.chart.clearDirtyState();
-    autoSaveLayoutViewState();
+    window.chart.render(true); // Forced sync render to eliminate frame lag
+    // window.chart.clearDirtyState(); // REMOVED: Do not clear unsaved drawings during symbol switch!
+    // window.chart.clearHistory(); // DISABLED: Keep history across symbols for Undo/Redo
+    if (!skipDirty) {
+        window.chart.isLayoutDirty = true;
+        if (window.chart._notifyDirtyChange) window.chart._notifyDirtyChange();
+    }
 }
 
 /**
@@ -273,6 +282,12 @@ function finalizeSessionLoad(marketData) {
 export async function saveCurrentLayout() {
     if (!window.chart?.currentLayoutId || window.chart.isRestoring) return;
     try {
+        // Best Practice: First sync all drawings (pending actions) across all symbols 
+        // to ensure we don't lose any unsaved drawings from previous symbols.
+        if (window.chart.syncWithDatabase) {
+            await window.chart.syncWithDatabase();
+        }
+
         const fullState = window.chart.getChartState();
         await updateLayout(window.chart.currentLayoutId, {
             chartState: fullState,
@@ -293,16 +308,12 @@ export async function saveCurrentLayout() {
         if (window.chart.clearDirtyState) {
             window.chart.clearDirtyState();
         }
-        console.log('[LayoutSave] Success, dirty state cleared.');
+        console.log('[LayoutSave] Success, drawings synced and dirty state cleared.');
     } catch (e) {
-        console.error('[AutoSave] Failed:', e);
+        console.error('[LayoutSave] Failed:', e);
     }
 }
-
-export const autoSaveLayoutViewState = () => saveCurrentLayout();
-window.autoSaveLayoutViewState = autoSaveLayoutViewState;
-
-export async function changeTimeframe(timeframe, value = null, unit = null) {
+export async function changeTimeframe(timeframe, value = null, unit = null, skipDirty = false) {
     if (!window.chart?.symbol) return;
     if (window.setTfActive) window.setTfActive(timeframe);
 
@@ -320,21 +331,60 @@ export async function changeTimeframe(timeframe, value = null, unit = null) {
     if (window.chart.rawData.length > 0 && window.chart.fullFit) window.chart.fullFit();
     window.chart.isLoading = false;
     window.chart.render();
-    autoSaveLayoutViewState();
+    if (!skipDirty) {
+        window.chart.isLayoutDirty = true;
+        if (window.chart._notifyDirtyChange) window.chart._notifyDirtyChange();
+    }
 }
 
 async function restoreDrawingTools(layoutId, symbol, exchange, symbolId) {
-    if (!layoutId) return;
+    if (!layoutId || !window.chart) return;
     const result = await getDrawingTools({ layoutId, symbol, exchange, symbolId });
     if (!result?.data) return;
 
     const mainPane = window.chart.panes.find(p => p.id === 'main');
-    window.chart.drawingTools = [];
+    const targetSymbol = (symbol || '').toUpperCase();
+    const targetExchange = (exchange || '').toUpperCase();
+    
+    // Best Practice: Multi-symbol persistence.
+    // 1. Filter out only the tools that belong to the TARGET context AND are NOT dirty (saved).
+    // This preserves:
+    // - Unsaved drawings for the current symbol.
+    // - All drawings (saved or unsaved) for other symbols.
+    window.chart.drawingTools = window.chart.drawingTools.filter(t => {
+        const toolIdStr = t.id ? t.id.toString() : null;
+        
+        // Priority 1: Keep if it's a local drawing (no DB ID yet) OR in unsaved states
+        const isLocal = !t.id || (typeof t.id === 'string' && t.id.startsWith('local_'));
+        if (isLocal || (toolIdStr && (window.chart.pendingActions.has(toolIdStr) || window.chart.inFlightSync.has(toolIdStr) || (window.chart.deferredUpdates && window.chart.deferredUpdates.has(toolIdStr))))) {
+            return true;
+        }
 
+        // Priority 2: Keep if it belongs to a DIFFERENT symbol/exchange
+        const tSymbol = (t.symbol || '').toUpperCase();
+        const tExchange = (t.exchange || '').toUpperCase();
+        const isSameContext = (tSymbol === targetSymbol) && 
+                             (tExchange === targetExchange) && 
+                             (t.symbolId === symbolId || !t.symbolId || !symbolId);
+
+        return !isSameContext;
+    });
+
+    // 2. Add tools from database that are NOT already in pendingActions (to avoid overwrite)
     result.data.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)).forEach(d => {
-        const tool = window.chart.createDrawingTool(d.toolType, d.points, d.style);
+        const dbIdStr = d.id ? d.id.toString() : null;
+        if (dbIdStr && (window.chart.pendingActions.has(dbIdStr) || window.chart.inFlightSync.has(dbIdStr) || (window.chart.deferredUpdates && window.chart.deferredUpdates.has(dbIdStr)))) return;
+
+        const tool = window.chart.createDrawingTool(d.toolType, d.points, d.style, d.id);
         if (tool) {
-            Object.assign(tool, { pane: mainPane, id: d.id, isHidden: !!d.isHidden, isLocked: !!d.isLocked });
+            Object.assign(tool, { 
+                pane: mainPane, 
+                isHidden: !!d.isHidden, 
+                isLocked: !!d.isLocked,
+                symbol: d.symbol || symbol,
+                exchange: d.exchange || exchange,
+                symbolId: d.symbolId || symbolId
+            });
             window.chart.drawingTools.push(tool);
         }
     });

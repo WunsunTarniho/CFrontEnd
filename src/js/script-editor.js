@@ -144,7 +144,8 @@ export class ScriptEditorController {
         if (scriptData) {
             this.editor.setValue(scriptData.script);
             this.currentScriptName = scriptData.name;
-            this.currentScriptId = scriptData.id;
+            // Only use ID if it's a database ID (doesn't start with 'ind_')
+            this.currentScriptId = (scriptData.id && String(scriptData.id).startsWith('ind_')) ? null : scriptData.id;
             this.nameInput.value = scriptData.name;
         } else {
             this.currentScriptId = null;
@@ -212,7 +213,7 @@ export class ScriptEditorController {
             const response = await fetch(url, {
                 method: method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, script, userId: "1" })
+                body: JSON.stringify({ name, script, userId: "6633b499e1a90c2e34789abc" })
             });
             const result = await response.json();
             if (result.success) {
@@ -240,19 +241,15 @@ export class ScriptEditorController {
                 // Now pass the currentScriptId (might be ind_... from chart or database ID)
                 const indicator = this.chart.addIndicator(name, script, this.currentScriptId);
                 
-                // If it was just added, update our local ID so the button changes to "Sync"
+                // If it was just added, only update our local ID if it's a real database ID
+                // (Local IDs start with 'ind_')
                 if (indicator && indicator.id) {
-                    this.currentScriptId = indicator.id;
+                    if (!String(indicator.id).startsWith('ind_')) {
+                        this.currentScriptId = indicator.id;
+                    }
                     this.updateApplyButton();
                 }
 
-                // Mark as active script in localStorage
-                localStorage.setItem('activeZenScript', JSON.stringify({
-                    id: this.currentScriptId,
-                    name: name,
-                    code: script
-                }));
-                
                 this.logConsole(`Indicator ${this.addChartBtn.textContent === 'Sync with Chart' ? 'synced' : 'added'} successfully.`, 'success');
             } else {
                 this.logConsole("Chart not ready to receive scripts.", 'error');
