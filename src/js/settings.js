@@ -2610,7 +2610,7 @@ export class ToolSettingsController {
             this.activeTool.points = JSON.parse(JSON.stringify(this.backupPoints));
             this.chart.render();
         }
-        if (this.chart.undoStack.length > 0) this.chart.undoStack.pop();
+        if (this.chart.stateManager.undoStack.length > 0) this.chart.stateManager.undoStack.pop();
         this.hide();
     }
 

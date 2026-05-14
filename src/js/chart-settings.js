@@ -630,7 +630,7 @@ export class ChartSettingsController {
             if (revert && this.snapshot) {
                 this.chart.applyChartState(this.snapshot);
                 this.chart.render(true);
-                if (this.chart.undoStack.length > 0) this.chart.undoStack.pop();
+                if (this.chart.stateManager.undoStack.length > 0) this.chart.stateManager.undoStack.pop();
                 this.chart.isLayoutDirty = true;
                 if (this.chart._notifyDirtyChange) this.chart._notifyDirtyChange();
             }
