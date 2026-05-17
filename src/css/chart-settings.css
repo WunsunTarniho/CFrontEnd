@@ -129,7 +129,7 @@
 /* Content Area */
 .chart-settings-content {
     flex: 1;
-    padding: 20px 30px;
+    padding: 20px 30px 30px;
     overflow-y: auto;
     overflow-x: hidden;
 }
@@ -594,6 +594,7 @@ input[type="checkbox"]:checked::after {
     justify-content: flex-start; /* Changed from space-between to flex-start */
     min-height: 32px;
     gap: 12px;
+    padding: 4px 0;
 }
 
 .settings-plot-sub-row {
@@ -739,6 +740,118 @@ input[type="checkbox"]:checked::after {
     height: 2px;
     background: currentColor;
     opacity: 0.7;
+}
+
+/* Advanced Settings Button & Popover - UI STANDARD 2.4 REFINED */
+.more-settings-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #787b86;
+    cursor: pointer;
+    margin-left: 4px;
+    transition: all 0.2s;
+    font-size: 18px;
+}
+
+.more-settings-btn:hover {
+    background: #2a2e39;
+    color: #f0f3fa;
+    border-color: #363a45;
+}
+
+.advanced-settings-popover {
+    position: fixed;
+    background: #16161a;
+    border: 1px solid #363a45;
+    border-radius: 6px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+    padding: 14px 18px;
+    z-index: 3000;
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 0; /* Managed by row margins */
+}
+
+.advanced-settings-popover .settings-row {
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start; /* Standard alignment */
+    gap: 12px;
+    min-height: 28px;
+}
+
+.advanced-settings-popover label {
+    font-size: 13px;
+    color: #d1d4dc;
+    width: 100px; /* Standard fixed width for popover labels */
+    flex-shrink: 0;
+}
+
+.advanced-settings-popover input:not([type="checkbox"]), 
+.advanced-settings-popover select {
+    background: #131722 !important;
+    border: 1px solid #434651 !important;
+    color: #d1d4dc !important;
+    padding: 0 8px !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    outline: none !important;
+    height: 28px !important;
+    box-sizing: border-box;
+}
+
+.advanced-settings-popover select {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none'%3E%3Cpath d='M2 3.5L5 6.5L8 3.5' stroke='%23787b86' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 8px center !important;
+    padding-right: 24px !important;
+    cursor: pointer;
+}
+
+/* Specific widths for standard alignment */
+.advanced-settings-popover input[type="number"],
+.advanced-settings-popover input[type="text"],
+.advanced-settings-popover select {
+    width: 100px !important;
+}
+
+.advanced-settings-popover .als-control-wrapper {
+    width: auto;
+    display: flex;
+    align-items: center;
+    height: 28px;
+}
+
+/* Ensure the color square inside ALS is standard size */
+.advanced-settings-popover .als-control-wrapper .style-color-wrapper {
+    background: #131722 !important;
+    border: 1px solid #434651 !important;
+}
+
+.advanced-settings-popover input:focus,
+.advanced-settings-popover select:focus {
+    border-color: #2962ff !important;
+}
+
+.popover-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 2999;
+    background: transparent;
 }
 
 /* Plot Mode Selector - UI STANDARD 2.4 Compliance */
