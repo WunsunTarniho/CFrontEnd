@@ -576,6 +576,7 @@ export class IndicatorSettingsController {
         if (!this.tempStyle.plots && this.activeIndicator.plots) {
             this.tempStyle.plots = this.activeIndicator.plots.map(p => ({
                 color: p.color || '#2196F3',
+                colorMap: p.colorMap || {},
                 width: p.width || 2,
                 style: p.style || 'solid',
                 location: p.location || 'belowbar',
@@ -2039,6 +2040,12 @@ export class IndicatorSettingsController {
                 if (!['step','area','columns','histogram','circles','cross'].includes(plot.style)) plot.style = val.style;
             }
         } else {
+            if (!plot.colorMap) plot.colorMap = {};
+            const originalColor = cObj.originalColor || cObj.color;
+            if (!cObj.originalColor) cObj.originalColor = originalColor;
+
+            plot.colorMap[originalColor] = val.rgba;
+
             if (Array.isArray(plot.color)) plot.color = plot.color.map(c => c === cObj.color ? val.rgba : c);
             else plot.color = val.rgba;
             cObj.color = val.rgba;
