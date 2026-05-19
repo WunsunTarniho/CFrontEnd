@@ -1,6 +1,874 @@
 /**
  * ScriptEditorController - Manages the Monaco Editor for ZenScript.
  */
+/**
+ * ScriptEditorController - Manages the Monaco Editor for ZenScript.
+ */
+
+const ZEN_DOCS = {
+    // Built-in functions
+    'indicator': {
+        signature: 'void indicator(string title, string shorttitle="", bool overlay=false, int max_lines_count=500, int max_labels_count=50)',
+        desc: 'Declares script properties (Must be called once at script start).',
+        params: [
+            { name: 'title', desc: 'Full name of the indicator.' },
+            { name: 'shorttitle', desc: 'Short name shown in legend.' },
+            { name: 'overlay', desc: 'Render on main chart if true.' },
+            { name: 'max_lines_count', desc: 'Max historical lines on chart.' },
+            { name: 'max_labels_count', desc: 'Max historical labels on chart.' }
+        ]
+    },
+    'sma': {
+        signature: 'float sma(float source, int length)',
+        desc: 'Simple Moving Average (SMA). Calculates the sum of source values over the last length bars divided by length.',
+        params: [
+            { name: 'source', desc: 'Series of values to be averaged.' },
+            { name: 'length', desc: 'Number of bars.' }
+        ]
+    },
+    'ema': {
+        signature: 'float ema(float source, int length)',
+        desc: 'Exponential Moving Average (EMA). An exponentially weighted moving average of the source series.',
+        params: [
+            { name: 'source', desc: 'Series of values to be averaged.' },
+            { name: 'length', desc: 'Number of bars.' }
+        ]
+    },
+    'rsi': {
+        signature: 'float rsi(float source, int length)',
+        desc: 'Relative Strength Index (RSI). Measures speed and change of price movements.',
+        params: [
+            { name: 'source', desc: 'Series of values to calculate RSI.' },
+            { name: 'length', desc: 'Number of bars.' }
+        ]
+    },
+    'stoch': {
+        signature: 'float stoch(float source, float high, float low, int length)',
+        desc: 'Stochastic Oscillator. Calculates stochastic value based on source, high, low, and length.',
+        params: [
+            { name: 'source', desc: 'Main source series (usually close).' },
+            { name: 'high', desc: 'High price series.' },
+            { name: 'low', desc: 'Low price series.' },
+            { name: 'length', desc: 'Length (bars).' }
+        ]
+    },
+    'bb': {
+        signature: 'float bb(float source, int length, float mult)',
+        desc: 'Bollinger Bands. Returns Bollinger Bands values (basis, upper, lower).',
+        params: [
+            { name: 'source', desc: 'Main source series.' },
+            { name: 'length', desc: 'Length (bars).' },
+            { name: 'mult', desc: 'Standard deviation multiplier.' }
+        ]
+    },
+    'atr': {
+        signature: 'float atr(int length)',
+        desc: 'Average True Range (ATR). Measures market volatility.',
+        params: [
+            { name: 'length', desc: 'Number of bars.' }
+        ]
+    },
+    'supertrend': {
+        signature: 'float supertrend(float factor, int period)',
+        desc: 'SuperTrend indicator. Returns supertrend line value.',
+        params: [
+            { name: 'factor', desc: 'Multiplier factor.' },
+            { name: 'period', desc: 'ATR period length.' }
+        ]
+    },
+    'vwap': {
+        signature: 'float vwap(float source)',
+        desc: 'Volume Weighted Average Price (VWAP). Calculates volume weighted average price.',
+        params: [
+            { name: 'source', desc: 'Main source series.' }
+        ]
+    },
+    'plot': {
+        signature: 'plot plot(float series, string title, color color, int width, string style, bool force_overlay)',
+        desc: 'Plots a time-series on the chart, returning a plot reference for area filling.',
+        params: [
+            { name: 'series', desc: 'Data series to plot (e.g. close).' },
+            { name: 'title', desc: 'Title of the plot.' },
+            { name: 'color', desc: 'Color of the plot line.' },
+            { name: 'width', desc: 'Width of the line.' },
+            { name: 'style', desc: 'Plot style ("line", "histogram", "columns").' },
+            { name: 'force_overlay', desc: 'Force plot on main chart.' }
+        ]
+    },
+    'plotshape': {
+        signature: 'void plotshape(float|bool series, string title, string style, string location, color color, string size, string text)',
+        desc: 'Plots a shape at specific locations when a condition is met.',
+        params: [
+            { name: 'series', desc: 'Boolean/float condition series.' },
+            { name: 'title', desc: 'Plot title.' },
+            { name: 'style', desc: 'Shape style ("triangleup", "triangledown", etc).' },
+            { name: 'location', desc: 'Shape location ("abovebar", "belowbar", etc).' },
+            { name: 'color', desc: 'Color of the shape.' },
+            { name: 'size', desc: 'Size of the shape ("small", "normal", "large").' },
+            { name: 'text', desc: 'Annotation text.' }
+        ]
+    },
+    'plotchar': {
+        signature: 'void plotchar(float|bool series, string title, string char, string location, color color, string size)',
+        desc: 'Plots characters on the chart.',
+        params: [
+            { name: 'series', desc: 'Boolean/float condition series.' },
+            { name: 'title', desc: 'Plot title.' },
+            { name: 'char', desc: 'Character to plot.' },
+            { name: 'location', desc: 'Location on chart.' },
+            { name: 'color', desc: 'Color of character.' },
+            { name: 'size', desc: 'Size.' }
+        ]
+    },
+    'plotarrow': {
+        signature: 'void plotarrow(float|bool series, string title, color colorup, color colordown)',
+        desc: 'Plots up/down arrows based on series value.',
+        params: [
+            { name: 'series', desc: 'Data series (positive plots up, negative plots down).' },
+            { name: 'title', desc: 'Plot title.' },
+            { name: 'colorup', desc: 'Up arrow color.' },
+            { name: 'colordown', desc: 'Down arrow color.' }
+        ]
+    },
+    'plotcandle': {
+        signature: 'void plotcandle(float open, float high, float low, float close, string title, color color, color wickcolor, color bordercolor)',
+        desc: 'Plots a custom candlestick series.',
+        params: [
+            { name: 'open', desc: 'Open price series.' },
+            { name: 'high', desc: 'High price series.' },
+            { name: 'low', desc: 'Low price series.' },
+            { name: 'close', desc: 'Close price series.' },
+            { name: 'title', desc: 'Plot title in legend.' },
+            { name: 'color', desc: 'Body fill color.' },
+            { name: 'wickcolor', desc: 'Wick color.' },
+            { name: 'bordercolor', desc: 'Border color.' }
+        ]
+    },
+    'hline': {
+        signature: 'hline hline(float price, string title, color color, int width, string style)',
+        desc: 'Plots a constant horizontal price line, returning an hline reference for area filling.',
+        params: [
+            { name: 'price', desc: 'Price level.' },
+            { name: 'title', desc: 'Title.' },
+            { name: 'color', desc: 'Line color.' },
+            { name: 'width', desc: 'Line width.' },
+            { name: 'style', desc: 'Line style ("solid", "dashed", "dotted").' }
+        ]
+    },
+    'bgcolor': {
+        signature: 'void bgcolor(color color, string title, bool force_overlay)',
+        desc: 'Fills the background color of the chart.',
+        params: [
+            { name: 'color', desc: 'Background color.' },
+            { name: 'title', desc: 'Title.' },
+            { name: 'force_overlay', desc: 'Force background fill on main chart.' }
+        ]
+    },
+    'barcolor': {
+        signature: 'void barcolor(color color, string title, bool force_overlay)',
+        desc: 'Colors the chart bars/candles.',
+        params: [
+            { name: 'color', desc: 'Bar color.' },
+            { name: 'title', desc: 'Title.' },
+            { name: 'force_overlay', desc: 'Force color on main chart.' }
+        ]
+    },
+    'fill': {
+        signature: 'void fill(plot p1, plot p2, color color, string title)',
+        desc: 'Fills the region between two plot lines.',
+        params: [
+            { name: 'p1', desc: 'First plot reference.' },
+            { name: 'p2', desc: 'Second plot reference.' },
+            { name: 'color', desc: 'Fill color.' },
+            { name: 'title', desc: 'Title.' }
+        ]
+    },
+    'crossover': {
+        signature: 'bool crossover(float s1, float s2)',
+        desc: 'Checks if series 1 crosses above series 2.',
+        params: [
+            { name: 's1', desc: 'First data series.' },
+            { name: 's2', desc: 'Second data series.' }
+        ]
+    },
+    'crossunder': {
+        signature: 'bool crossunder(float s1, float s2)',
+        desc: 'Checks if series 1 crosses below series 2.',
+        params: [
+            { name: 's1', desc: 'First data series.' },
+            { name: 's2', desc: 'Second data series.' }
+        ]
+    },
+    'highest': {
+        signature: 'float highest(float source, int length)',
+        desc: 'Highest value in a lookback window.',
+        params: [
+            { name: 'source', desc: 'Source data series.' },
+            { name: 'length', desc: 'Lookback length.' }
+        ]
+    },
+    'lowest': {
+        signature: 'float lowest(float source, int length)',
+        desc: 'Lowest value in a lookback window.',
+        params: [
+            { name: 'source', desc: 'Source data series.' },
+            { name: 'length', desc: 'Lookback length.' }
+        ]
+    },
+    'stdev': {
+        signature: 'float stdev(float source, int length)',
+        desc: 'Standard Deviation.',
+        params: [
+            { name: 'source', desc: 'Source data series.' },
+            { name: 'length', desc: 'Lookback length.' }
+        ]
+    },
+    'variance': {
+        signature: 'float variance(float source, int length)',
+        desc: 'Sample variance of a series.',
+        params: [
+            { name: 'source', desc: 'Source data series.' },
+            { name: 'length', desc: 'Lookback length.' }
+        ]
+    },
+    'covariance': {
+        signature: 'float covariance(float source1, float source2, int length)',
+        desc: 'Covariance of two series.',
+        params: [
+            { name: 'source1', desc: 'First source series.' },
+            { name: 'source2', desc: 'Second source series.' },
+            { name: 'length', desc: 'Lookback length.' }
+        ]
+    },
+    'correlation': {
+        signature: 'float correlation(float source1, float source2, int length)',
+        desc: 'Pearson Correlation Coefficient of two series.',
+        params: [
+            { name: 'source1', desc: 'First source series.' },
+            { name: 'source2', desc: 'Second source series.' },
+            { name: 'length', desc: 'Lookback length.' }
+        ]
+    },
+    'linreg': {
+        signature: 'float linreg(float source, int length, int offset)',
+        desc: 'Linear regression curve value at offset.',
+        params: [
+            { name: 'source', desc: 'Source data series.' },
+            { name: 'length', desc: 'Lookback length.' },
+            { name: 'offset', desc: 'Bar offset (optional, default: 0).' }
+        ]
+    },
+    'linreg_slope': {
+        signature: 'float linreg_slope(float source, int length)',
+        desc: 'Linear regression slope.',
+        params: [
+            { name: 'source', desc: 'Source data series.' },
+            { name: 'length', desc: 'Lookback length.' }
+        ]
+    },
+    'linreg_intercept': {
+        signature: 'float linreg_intercept(float source, int length)',
+        desc: 'Linear regression intercept.',
+        params: [
+            { name: 'source', desc: 'Source data series.' },
+            { name: 'length', desc: 'Lookback length.' }
+        ]
+    },
+    'change': {
+        signature: 'float change(float source, int length=1)',
+        desc: 'Difference between current value and value from length bars ago.',
+        params: [
+            { name: 'source', desc: 'Source data series.' },
+            { name: 'length', desc: 'Lookback length (default: 1).' }
+        ]
+    },
+    'pivothigh': {
+        signature: 'float pivothigh(float source, int leftBars, int rightBars)',
+        desc: 'Returns the price level of a Pivot High when a peak is confirmed.',
+        params: [
+            { name: 'source', desc: 'Source series.' },
+            { name: 'leftBars', desc: 'Number of preceding bars to compare.' },
+            { name: 'rightBars', desc: 'Number of succeeding bars to compare.' }
+        ]
+    },
+    'pivotlow': {
+        signature: 'float pivotlow(float source, int leftBars, int rightBars)',
+        desc: 'Returns the price level of a Pivot Low when a trough is confirmed.',
+        params: [
+            { name: 'source', desc: 'Source series.' },
+            { name: 'leftBars', desc: 'Number of preceding bars to compare.' },
+            { name: 'rightBars', desc: 'Number of succeeding bars to compare.' }
+        ]
+    },
+    'fixnan': {
+        signature: 'float fixnan(float source)',
+        desc: 'Replaces NaN values with the last valid non-NaN value in the series.',
+        params: [
+            { name: 'source', desc: 'Source series.' }
+        ]
+    },
+    'rgba': {
+        signature: 'color rgba(int red, int green, int blue, float alpha)',
+        desc: 'Creates a custom color from RGBA channels.',
+        params: [
+            { name: 'red', desc: 'Red component (0 to 255).' },
+            { name: 'green', desc: 'Green component (0 to 255).' },
+            { name: 'blue', desc: 'Blue component (0 to 255).' },
+            { name: 'alpha', desc: 'Transparency (0.0 to 1.0 or 0 to 100).' }
+        ]
+    },
+    'abs': {
+        signature: 'float abs(float source)',
+        desc: 'Returns the absolute value of the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'ceil': {
+        signature: 'float ceil(float source)',
+        desc: 'Returns the smallest integer value that is greater than or equal to the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'floor': {
+        signature: 'float floor(float source)',
+        desc: 'Returns the largest integer value that is less than or equal to the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'sqrt': {
+        signature: 'float sqrt(float source)',
+        desc: 'Returns the square root of the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'exp': {
+        signature: 'float exp(float source)',
+        desc: 'Returns the natural exponential (e^x) of the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'log': {
+        signature: 'float log(float source)',
+        desc: 'Returns the natural logarithm (base e) of the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'log10': {
+        signature: 'float log10(float source)',
+        desc: 'Returns the base-10 logarithm of the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'pow': {
+        signature: 'float pow(float base, float exponent)',
+        desc: 'Returns the base raised to the power of the exponent.',
+        params: [
+            { name: 'base', desc: 'The base value or series.' },
+            { name: 'exponent', desc: 'The exponent value or series.' }
+        ]
+    },
+    'sin': {
+        signature: 'float sin(float source)',
+        desc: 'Returns the trigonometric sine of an angle in radians.',
+        params: [{ name: 'source', desc: 'The angle series or value in radians.' }]
+    },
+    'cos': {
+        signature: 'float cos(float source)',
+        desc: 'Returns the trigonometric cosine of an angle in radians.',
+        params: [{ name: 'source', desc: 'The angle series or value in radians.' }]
+    },
+    'tan': {
+        signature: 'float tan(float source)',
+        desc: 'Returns the trigonometric tangent of an angle in radians.',
+        params: [{ name: 'source', desc: 'The angle series or value in radians.' }]
+    },
+    'asin': {
+        signature: 'float asin(float source)',
+        desc: 'Returns the arcsine (in radians) of the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'acos': {
+        signature: 'float acos(float source)',
+        desc: 'Returns the arccosine (in radians) of the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'atan': {
+        signature: 'float atan(float source)',
+        desc: 'Returns the arctangent (in radians) of the source value or series.',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'sign': {
+        signature: 'float sign(float source)',
+        desc: 'Returns the sign of the source value (1 if positive, -1 if negative, 0 if zero).',
+        params: [{ name: 'source', desc: 'The series or value to process.' }]
+    },
+    'min': {
+        signature: 'float min(float a, float b)',
+        desc: 'Returns the minimum of two values or series.',
+        params: [
+            { name: 'a', desc: 'First series or value.' },
+            { name: 'b', desc: 'Second series or value.' }
+        ]
+    },
+    'max': {
+        signature: 'float max(float a, float b)',
+        desc: 'Returns the maximum of two values or series.',
+        params: [
+            { name: 'a', desc: 'First series or value.' },
+            { name: 'b', desc: 'Second series or value.' }
+        ]
+    },
+    'nz': {
+        signature: 'float nz(float source, float replacement=0.0)',
+        desc: 'Replaces NaN or null values with a replacement value (default is 0.0).',
+        params: [
+            { name: 'source', desc: 'The series or value to check.' },
+            { name: 'replacement', desc: 'The replacement value if source is null/NaN.' }
+        ]
+    },
+    'na': {
+        signature: 'bool na(float source)',
+        desc: 'Returns true if the value is NaN or null, false otherwise.',
+        params: [{ name: 'source', desc: 'The series or value to check.' }]
+    },
+    'wma': {
+        signature: 'float wma(float source, int length)',
+        desc: 'Calculates the Weighted Moving Average of a series.',
+        params: [
+            { name: 'source', desc: 'The series to calculate WMA on.' },
+            { name: 'length', desc: 'The lookback window size.' }
+        ]
+    },
+    'rma': {
+        signature: 'float rma(float source, int length)',
+        desc: 'Calculates the Running Moving Average of a series (exponential moving average with alpha = 1/length).',
+        params: [
+            { name: 'source', desc: 'The series to calculate RMA on.' },
+            { name: 'length', desc: 'The lookback window size.' }
+        ]
+    },
+    'tr': {
+        signature: 'float tr()',
+        desc: 'Returns the True Range of the current bar (max of high-low, abs(high-prevClose), abs(low-prevClose)).',
+        params: []
+    },
+    'print': {
+        signature: 'void print(any arg1, any arg2, ...)',
+        desc: 'Prints debug messages to the browser developer console.',
+        params: [{ name: 'args', desc: 'Comma-separated values to print.' }]
+    },
+    'plotbar': {
+        signature: 'void plotbar(float open, float high, float low, float close, string title="", color color=color.blue)',
+        desc: 'Plots custom price bars on the chart.',
+        params: [
+            { name: 'open', desc: 'Open series.' },
+            { name: 'high', desc: 'High series.' },
+            { name: 'low', desc: 'Low series.' },
+            { name: 'close', desc: 'Close series.' },
+            { name: 'title', desc: 'Title of the plot.' },
+            { name: 'color', desc: 'Color of the bars.' }
+        ]
+    },
+
+
+    // input namespace
+    'input.int': {
+        signature: 'int input.int(int defval, string title, int minval, int maxval)',
+        desc: 'Declares an integer user-input configuration.',
+        params: [
+            { name: 'defval', desc: 'Default integer value.' },
+            { name: 'title', desc: 'Input title label.' },
+            { name: 'minval', desc: 'Minimum permitted value.' },
+            { name: 'maxval', desc: 'Maximum permitted value.' }
+        ]
+    },
+    'input.float': {
+        signature: 'float input.float(float defval, string title, float minval, float maxval)',
+        desc: 'Declares a float user-input configuration.',
+        params: [
+            { name: 'defval', desc: 'Default float value.' },
+            { name: 'title', desc: 'Input title label.' },
+            { name: 'minval', desc: 'Minimum permitted value.' },
+            { name: 'maxval', desc: 'Maximum permitted value.' }
+        ]
+    },
+    'input.bool': {
+        signature: 'bool input.bool(bool defval, string title)',
+        desc: 'Declares a boolean user-input checkbox.',
+        params: [
+            { name: 'defval', desc: 'Default boolean value.' },
+            { name: 'title', desc: 'Input title label.' }
+        ]
+    },
+    'input.string': {
+        signature: 'string input.string(string defval, string title, any options)',
+        desc: 'Declares a string user-input text or dropdown.',
+        params: [
+            { name: 'defval', desc: 'Default string value.' },
+            { name: 'title', desc: 'Input title label.' },
+            { name: 'options', desc: 'Dropdown options array (e.g. ["EMA", "SMA"]).' }
+        ]
+    },
+    'input.color': {
+        signature: 'color input.color(color defval, string title)',
+        desc: 'Declares a color user-input colorpicker.',
+        params: [
+            { name: 'defval', desc: 'Default color value.' },
+            { name: 'title', desc: 'Input title label.' }
+        ]
+    },
+    'input.source': {
+        signature: 'float input.source(float defval, string title)',
+        desc: 'Declares a data source selector (close, open, high, low).',
+        params: [
+            { name: 'defval', desc: 'Default data source (close).' },
+            { name: 'title', desc: 'Input title label.' }
+        ]
+    },
+
+    // color namespace
+    'color.new': {
+        signature: 'color color.new(color color, int transparency)',
+        desc: 'Applies transparency level to a color.',
+        params: [
+            { name: 'color', desc: 'Base color (e.g. color.blue).' },
+            { name: 'transparency', desc: 'Transparency percentage (0 to 100).' }
+        ]
+    },
+    'color.rgb': {
+        signature: 'color color.rgb(int red, int green, int blue, int transparency)',
+        desc: 'Creates a custom color from RGB values.',
+        params: [
+            { name: 'red', desc: 'Red component (0 to 255).' },
+            { name: 'green', desc: 'Green component (0 to 255).' },
+            { name: 'blue', desc: 'Blue component (0 to 255).' },
+            { name: 'transparency', desc: 'Transparency percentage (optional, 0 to 100).' }
+        ]
+    },
+    'color.gradient': {
+        signature: 'color color.gradient(float value, float bottom_value, float top_value, color bottom_color, color top_color)',
+        desc: 'Calculates a color dynamically based on a value between bottom and top values, interpolating between two colors.',
+        params: [
+            { name: 'value', desc: 'The series or value to base the gradient calculation on.' },
+            { name: 'bottom_value', desc: 'The lower boundary value.' },
+            { name: 'top_value', desc: 'The upper boundary value.' },
+            { name: 'bottom_color', desc: 'Color corresponding to bottom_value.' },
+            { name: 'top_color', desc: 'Color corresponding to top_value.' }
+        ]
+    },
+
+    // box namespace
+    'box.new': {
+        signature: 'box box.new(int left, float top, int right, float bottom, color border_color, int border_width, string border_style, string extend, string xloc, color bgcolor, string text, string text_size, color text_color)',
+        desc: 'Draws a box shape on the chart.',
+        params: [
+            { name: 'left', desc: 'Left boundary (bar index).' },
+            { name: 'top', desc: 'Top boundary price level.' },
+            { name: 'right', desc: 'Right boundary (bar index).' },
+            { name: 'bottom', desc: 'Bottom boundary price level.' },
+            { name: 'border_color', desc: 'Color of the box border.' },
+            { name: 'border_width', desc: 'Width of the box border (pixels).' },
+            { name: 'border_style', desc: 'Border style ("solid", "dashed", "dotted").' },
+            { name: 'extend', desc: 'Extend box horizontally ("none", "left", "right", "both").' }
+        ]
+    },
+    'box.set_left': {
+        signature: 'void box.set_left(box id, int left)',
+        desc: 'Sets the left boundary (bar index) of the box.',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'left', desc: 'Left boundary.' }
+        ]
+    },
+    'box.set_top': {
+        signature: 'void box.set_top(box id, float top)',
+        desc: 'Sets the top boundary (price level) of the box.',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'top', desc: 'Top boundary.' }
+        ]
+    },
+    'box.set_right': {
+        signature: 'void box.set_right(box id, int right)',
+        desc: 'Sets the right boundary (bar index) of the box.',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'right', desc: 'Right boundary.' }
+        ]
+    },
+    'box.set_bottom': {
+        signature: 'void box.set_bottom(box id, float bottom)',
+        desc: 'Sets the bottom boundary (price level) of the box.',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'bottom', desc: 'Bottom boundary.' }
+        ]
+    },
+    'box.set_border_color': {
+        signature: 'void box.set_border_color(box id, color color)',
+        desc: 'Sets the border color of the box.',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'color', desc: 'Border color.' }
+        ]
+    },
+    'box.set_border_width': {
+        signature: 'void box.set_border_width(box id, int width)',
+        desc: 'Sets the border width (pixels) of the box.',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'width', desc: 'Border width.' }
+        ]
+    },
+    'box.set_border_style': {
+        signature: 'void box.set_border_style(box id, string style)',
+        desc: 'Sets the border style of the box ("solid", "dashed", "dotted").',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'style', desc: 'Border style.' }
+        ]
+    },
+    'box.set_extend': {
+        signature: 'void box.set_extend(box id, string extend)',
+        desc: 'Sets whether the box extends horizontally ("none", "left", "right", "both").',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'extend', desc: 'Extend direction.' }
+        ]
+    },
+    'box.set_bgcolor': {
+        signature: 'void box.set_bgcolor(box id, color color)',
+        desc: 'Sets the background fill color of the box.',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'color', desc: 'Background color.' }
+        ]
+    },
+    'box.set_text': {
+        signature: 'void box.set_text(box id, string text)',
+        desc: 'Sets the text to display inside the box.',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'text', desc: 'Text content.' }
+        ]
+    },
+    'box.set_text_size': {
+        signature: 'void box.set_text_size(box id, string size)',
+        desc: 'Sets the size of the text inside the box ("small", "normal", "large", "huge").',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'size', desc: 'Text size.' }
+        ]
+    },
+    'box.set_text_color': {
+        signature: 'void box.set_text_color(box id, color color)',
+        desc: 'Sets the color of the text inside the box.',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'color', desc: 'Text color.' }
+        ]
+    },
+    'box.set_text_halign': {
+        signature: 'void box.set_text_halign(box id, string halign)',
+        desc: 'Sets the horizontal alignment of the text inside the box ("left", "center", "right").',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'halign', desc: 'Horizontal alignment.' }
+        ]
+    },
+    'box.set_text_valign': {
+        signature: 'void box.set_text_valign(box id, string valign)',
+        desc: 'Sets the vertical alignment of the text inside the box ("top", "middle", "bottom").',
+        params: [
+            { name: 'id', desc: 'The box object.' },
+            { name: 'valign', desc: 'Vertical alignment.' }
+        ]
+    },
+    'box.delete': {
+        signature: 'void box.delete(box id)',
+        desc: 'Removes/deletes the box from the chart.',
+        params: [
+            { name: 'id', desc: 'The box object to delete.' }
+        ]
+    },
+
+    // label namespace
+    'label.new': {
+        signature: 'label label.new(int x, float y, string text, string xloc, string yloc, color color, string style, color textcolor, string size)',
+        desc: 'Creates an interactive text label on the chart.',
+        params: [
+            { name: 'x', desc: 'X coordinate (bar index).' },
+            { name: 'y', desc: 'Y coordinate (price level).' },
+            { name: 'text', desc: 'Label text content.' },
+            { name: 'xloc', desc: 'X positioning coordinate system ("bar_index").' },
+            { name: 'yloc', desc: 'Y positioning coordinate system ("price", "abovebar", "belowbar").' }
+        ]
+    },
+
+    // line namespace
+    'line.new': {
+        signature: 'line line.new(int x1, float y1, int x2, float y2, color color, int width, string style)',
+        desc: 'Draws a customized line segment on the chart.',
+        params: [
+            { name: 'x1', desc: 'Start X coordinate (bar index).' },
+            { name: 'y1', desc: 'Start Y coordinate (price).' },
+            { name: 'x2', desc: 'End X coordinate (bar index).' },
+            { name: 'y2', desc: 'End Y coordinate (price).' },
+            { name: 'color', desc: 'Color of the line.' },
+            { name: 'width', desc: 'Width of the line (pixels).' },
+            { name: 'style', desc: 'Line style ("solid", "dashed", "dotted").' }
+        ]
+    },
+
+    // array namespace
+    'array.new_float': {
+        signature: 'array array.new_float(int size=0, float initial_value=null)',
+        desc: 'Creates a new ZenArray of float type.',
+        params: [
+            { name: 'size', desc: 'Initial size of the array.' },
+            { name: 'initial_value', desc: 'Initial value for all elements.' }
+        ]
+    },
+    'array.new_int': {
+        signature: 'array array.new_int(int size=0, int initial_value=null)',
+        desc: 'Creates a new ZenArray of int type.',
+        params: [
+            { name: 'size', desc: 'Initial size.' },
+            { name: 'initial_value', desc: 'Initial value.' }
+        ]
+    },
+    'array.new_bool': {
+        signature: 'array array.new_bool(int size=0, bool initial_value=null)',
+        desc: 'Creates a new ZenArray of bool type.',
+        params: [
+            { name: 'size', desc: 'Initial size.' },
+            { name: 'initial_value', desc: 'Initial value.' }
+        ]
+    },
+    'array.new_color': {
+        signature: 'array array.new_color(int size=0, color initial_value=null)',
+        desc: 'Creates a new ZenArray of color type.',
+        params: [
+            { name: 'size', desc: 'Initial size.' },
+            { name: 'initial_value', desc: 'Initial value.' }
+        ]
+    },
+    'array.new_string': {
+        signature: 'array array.new_string(int size=0, string initial_value=null)',
+        desc: 'Creates a new ZenArray of string type.',
+        params: [
+            { name: 'size', desc: 'Initial size.' },
+            { name: 'initial_value', desc: 'Initial value.' }
+        ]
+    },
+    'array.push': {
+        signature: 'void array.push(array id, any value)',
+        desc: 'Pushes a value to the end of the array.',
+        params: [
+            { name: 'id', desc: 'The array object.' },
+            { name: 'value', desc: 'The value to push.' }
+        ]
+    },
+    'array.get': {
+        signature: 'any array.get(array id, int index)',
+        desc: 'Gets the value at the specified index from the array.',
+        params: [
+            { name: 'id', desc: 'The array object.' },
+            { name: 'index', desc: 'The index of the element.' }
+        ]
+    },
+    'array.set': {
+        signature: 'void array.set(array id, int index, any value)',
+        desc: 'Sets the value at the specified index in the array.',
+        params: [
+            { name: 'id', desc: 'The array object.' },
+            { name: 'index', desc: 'The index of the element.' },
+            { name: 'value', desc: 'The new value.' }
+        ]
+    },
+    'array.size': {
+        signature: 'int array.size(array id)',
+        desc: 'Returns the size (number of elements) of the array.',
+        params: [
+            { name: 'id', desc: 'The array object.' }
+        ]
+    },
+    'array.clear': {
+        signature: 'void array.clear(array id)',
+        desc: 'Clears all elements from the array (sets size to 0).',
+        params: [
+            { name: 'id', desc: 'The array object.' }
+        ]
+    },
+    'array.remove': {
+        signature: 'any array.remove(array id, int index)',
+        desc: 'Removes the element at the specified index and returns it.',
+        params: [
+            { name: 'id', desc: 'The array object.' },
+            { name: 'index', desc: 'The index to remove.' }
+        ]
+    },
+    'array.insert': {
+        signature: 'void array.insert(array id, int index, any value)',
+        desc: 'Inserts a value at the specified index, shifting subsequent elements.',
+        params: [
+            { name: 'id', desc: 'The array object.' },
+            { name: 'index', desc: 'The index to insert at.' },
+            { name: 'value', desc: 'The value to insert.' }
+        ]
+    },
+    'array.pop': {
+        signature: 'any array.pop(array id)',
+        desc: 'Removes the last element of the array and returns it.',
+        params: [
+            { name: 'id', desc: 'The array object.' }
+        ]
+    },
+    'array.shift': {
+        signature: 'any array.shift(array id)',
+        desc: 'Removes the first element of the array and returns it.',
+        params: [
+            { name: 'id', desc: 'The array object.' }
+        ]
+    },
+    'array.unshift': {
+        signature: 'void array.unshift(array id, any value)',
+        desc: 'Adds a value to the beginning of the array.',
+        params: [
+            { name: 'id', desc: 'The array object.' },
+            { name: 'value', desc: 'The value to prepend.' }
+        ]
+    },
+    'array.sort': {
+        signature: 'array array.sort(array id)',
+        desc: 'Sorts the array elements in ascending order in-place.',
+        params: [
+            { name: 'id', desc: 'The array object.' }
+        ]
+    },
+    'array.avg': {
+        signature: 'float array.avg(array id)',
+        desc: 'Returns the average value of all elements in the array.',
+        params: [
+            { name: 'id', desc: 'The array object.' }
+        ]
+    },
+    'array.min': {
+        signature: 'float array.min(array id)',
+        desc: 'Returns the minimum value in the array.',
+        params: [
+            { name: 'id', desc: 'The array object.' }
+        ]
+    },
+    'array.max': {
+        signature: 'float array.max(array id)',
+        desc: 'Returns the maximum value in the array.',
+        params: [
+            { name: 'id', desc: 'The array object.' }
+        ]
+    },
+    'array.sum': {
+        signature: 'float array.sum(array id)',
+        desc: 'Returns the sum of all elements in the array.',
+        params: [
+            { name: 'id', desc: 'The array object.' }
+        ]
+    }
+};
+
 export class ScriptEditorController {
     constructor(chart) {
         this.chart = chart;
@@ -221,6 +1089,14 @@ export class ScriptEditorController {
         monaco.languages.registerCompletionItemProvider('zenscript', {
             triggerCharacters: ['.'],
             provideCompletionItems: (model, position) => {
+                const word = model.getWordAtPosition(position);
+                const range = {
+                    startLineNumber: position.lineNumber,
+                    endLineNumber: position.lineNumber,
+                    startColumn: word ? word.startColumn : position.column,
+                    endColumn: word ? word.endColumn : position.column
+                };
+
                 // Check if we are typing after a dot
                 const lastLine = model.getValueInRange({
                     startLineNumber: position.lineNumber,
@@ -229,7 +1105,7 @@ export class ScriptEditorController {
                     endColumn: position.column
                 });
                 
-                const dotMatch = lastLine.match(/([a-zA-Z_]\w*)\.$/);
+                const dotMatch = lastLine.match(/([a-zA-Z_]\w*)\.([a-zA-Z_]\w*)?$/);
                 if (dotMatch) {
                     const namespace = dotMatch[1];
                     const suggestions = [];
@@ -237,38 +1113,39 @@ export class ScriptEditorController {
                     if (namespace === 'color') {
                         const colors = ['red', 'green', 'blue', 'white', 'black', 'yellow', 'orange', 'purple', 'gray', 'teal', 'lime', 'maroon', 'navy', 'olive', 'silver', 'aqua', 'fuchsia', 'new', 'rgb', 'gradient'];
                         colors.forEach(c => {
+                            const kind = c === 'gradient' || c === 'new' || c === 'rgb' ? monaco.languages.CompletionItemKind.Method : monaco.languages.CompletionItemKind.Property;
+                            let ins = c;
+                            let rules = undefined;
+                            
                             if (c === 'gradient') {
-                                suggestions.push({
-                                    label: c,
-                                    kind: monaco.languages.CompletionItemKind.Method,
-                                    insertText: 'gradient(${1:close}, ${2:0}, ${3:100}, ${4:color.red}, ${5:color.green})',
-                                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                                    detail: 'color.gradient(value, bottom_value, top_value, bottom_color, top_color)'
-                                });
+                                ins = 'gradient(${1:close}, ${2:0}, ${3:100}, ${4:color.red}, ${5:color.green})';
+                                rules = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
                             } else if (c === 'new') {
-                                suggestions.push({
-                                    label: c,
-                                    kind: monaco.languages.CompletionItemKind.Method,
-                                    insertText: 'new(${1:color.blue}, ${2:50})',
-                                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                                    detail: 'color.new(color, transparency)'
-                                });
+                                ins = 'new(${1:color.blue}, ${2:50})';
+                                rules = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
                             } else if (c === 'rgb') {
-                                suggestions.push({
-                                    label: c,
-                                    kind: monaco.languages.CompletionItemKind.Method,
-                                    insertText: 'rgb(${1:255}, ${2:255}, ${3:255})',
-                                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                                    detail: 'color.rgb(red, green, blue, transparency?)'
-                                });
-                            } else {
-                                suggestions.push({
-                                    label: c,
-                                    kind: monaco.languages.CompletionItemKind.Property,
-                                    insertText: c,
-                                    detail: `color.${c}`
-                                });
+                                ins = 'rgb(${1:255}, ${2:255}, ${3:255})';
+                                rules = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
                             }
+                            
+                            const item = {
+                                label: c,
+                                kind: kind,
+                                insertText: ins,
+                                insertTextRules: rules,
+                                detail: `color.${c}`,
+                                range: range
+                            };
+
+                            const doc = ZEN_DOCS[`color.${c}`];
+                            if (doc) {
+                                item.detail = doc.signature;
+                                item.documentation = {
+                                    value: `**Description:**\n${doc.desc}\n\n**Parameters:**\n` + 
+                                           doc.params.map(p => `- \`${p.name}\`: ${p.desc}`).join('\n')
+                                };
+                            }
+                            suggestions.push(item);
                         });
                     } else if (namespace === 'input') {
                         const inputs = [
@@ -280,40 +1157,90 @@ export class ScriptEditorController {
                             { name: 'source', defval: 'close' }
                         ];
                         inputs.forEach(i => {
-                            suggestions.push({
+                            const item = {
                                 label: i.name,
                                 kind: monaco.languages.CompletionItemKind.Method,
                                 insertText: i.name + '(${1:' + i.defval + '}, title="${2:Title}")',
                                 insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                                detail: `input.${i.name}(${i.defval}, title)`
-                            });
+                                detail: `input.${i.name}`,
+                                range: range
+                            };
+
+                            const doc = ZEN_DOCS[`input.${i.name}`];
+                            if (doc) {
+                                item.detail = doc.signature;
+                                item.documentation = {
+                                    value: `**Description:**\n${doc.desc}\n\n**Parameters:**\n` + 
+                                           doc.params.map(p => `- \`${p.name}\`: ${p.desc}`).join('\n')
+                                };
+                            }
+                            suggestions.push(item);
                         });
                     } else if (namespace === 'box') {
                         const boxMethods = ['new', 'set_left', 'set_top', 'set_right', 'set_bottom', 'set_border_color', 'set_border_width', 'set_border_style', 'set_extend', 'set_bgcolor', 'set_text', 'set_text_size', 'set_text_color', 'set_text_halign', 'set_text_valign', 'delete'];
                         boxMethods.forEach(m => {
-                            suggestions.push({
+                            const item = {
                                 label: m,
                                 kind: monaco.languages.CompletionItemKind.Method,
                                 insertText: m + '($0)',
                                 insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                                detail: `box.${m}`
-                            });
+                                detail: `box.${m}`,
+                                range: range
+                            };
+
+                            const doc = ZEN_DOCS[`box.${m}`];
+                            if (doc) {
+                                item.detail = doc.signature;
+                                item.documentation = {
+                                    value: `**Description:**\n${doc.desc}\n\n**Parameters:**\n` + 
+                                           doc.params.map(p => `- \`${p.name}\`: ${p.desc}`).join('\n')
+                                };
+                            }
+                            suggestions.push(item);
                         });
                     } else if (namespace === 'label') {
-                        suggestions.push({
-                            label: 'new',
-                            kind: monaco.languages.CompletionItemKind.Method,
-                            insertText: 'new(x=${1:bar_index}, y=${2:high}, text="${3:Text}")',
-                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                            detail: 'label.new(x, y, text)'
+                        const labelMethods = ['new'];
+                        labelMethods.forEach(m => {
+                            const item = {
+                                label: m,
+                                kind: monaco.languages.CompletionItemKind.Method,
+                                insertText: m === 'new' ? 'new(x=${1:bar_index}, y=${2:high}, text="${3:Text}")' : m + '($0)',
+                                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                detail: `label.${m}`,
+                                range: range
+                            };
+
+                            const doc = ZEN_DOCS[`label.${m}`];
+                            if (doc) {
+                                item.detail = doc.signature;
+                                item.documentation = {
+                                    value: `**Description:**\n${doc.desc}\n\n**Parameters:**\n` + 
+                                           doc.params.map(p => `- \`${p.name}\`: ${p.desc}`).join('\n')
+                                };
+                            }
+                            suggestions.push(item);
                         });
                     } else if (namespace === 'line') {
-                        suggestions.push({
-                            label: 'new',
-                            kind: monaco.languages.CompletionItemKind.Method,
-                            insertText: 'new(x1=${1:bar_index[1]}, y1=${2:low[1]}, x2=${3:bar_index}, y2=${4:low})',
-                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                            detail: 'line.new(x1, y1, x2, y2)'
+                        const lineMethods = ['new'];
+                        lineMethods.forEach(m => {
+                            const item = {
+                                label: m,
+                                kind: monaco.languages.CompletionItemKind.Method,
+                                insertText: m === 'new' ? 'new(x1=${1:bar_index[1]}, y1=${2:low[1]}, x2=${3:bar_index}, y2=${4:low})' : m + '($0)',
+                                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                detail: `line.${m}`,
+                                range: range
+                            };
+
+                            const doc = ZEN_DOCS[`line.${m}`];
+                            if (doc) {
+                                item.detail = doc.signature;
+                                item.documentation = {
+                                    value: `**Description:**\n${doc.desc}\n\n**Parameters:**\n` + 
+                                           doc.params.map(p => `- \`${p.name}\`: ${p.desc}`).join('\n')
+                                };
+                            }
+                            suggestions.push(item);
                         });
                     } else if (namespace === 'array') {
                         const arrayMethods = ['new_float', 'new_int', 'new_bool', 'new_color', 'new_string', 'push', 'get', 'set', 'size', 'clear', 'remove', 'insert', 'pop', 'shift', 'unshift', 'sort', 'avg', 'min', 'max', 'sum'];
@@ -330,13 +1257,25 @@ export class ScriptEditorController {
                             } else {
                                 ins = m + '(${1:arr})';
                             }
-                            suggestions.push({
+                            
+                            const item = {
                                 label: m,
                                 kind: monaco.languages.CompletionItemKind.Method,
                                 insertText: ins,
                                 insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                                detail: `array.${m}`
-                            });
+                                detail: `array.${m}`,
+                                range: range
+                            };
+
+                            const doc = ZEN_DOCS[`array.${m}`];
+                            if (doc) {
+                                item.detail = doc.signature;
+                                item.documentation = {
+                                    value: `**Description:**\n${doc.desc}\n\n**Parameters:**\n` + 
+                                           doc.params.map(p => `- \`${p.name}\`: ${p.desc}`).join('\n')
+                                };
+                            }
+                            suggestions.push(item);
                         });
                     }
                     
@@ -352,7 +1291,8 @@ export class ScriptEditorController {
                     suggestions.push({
                         label: k,
                         kind: monaco.languages.CompletionItemKind.Keyword,
-                        insertText: k
+                        insertText: k,
+                        range: range
                     });
                 });
 
@@ -363,7 +1303,8 @@ export class ScriptEditorController {
                         label: v,
                         kind: monaco.languages.CompletionItemKind.Variable,
                         insertText: v,
-                        detail: 'Built-in time-series series'
+                        detail: 'Built-in time-series series',
+                        range: range
                     });
                 });
 
@@ -401,17 +1342,54 @@ export class ScriptEditorController {
                     { name: 'correlation', snippet: 'correlation(${1:close}, ${2:open}, ${3:14})', desc: 'Pearson Correlation Coefficient' },
                     { name: 'linreg', snippet: 'linreg(${1:close}, ${2:14}, ${3:0})', desc: 'Linear Regression Value' },
                     { name: 'linreg_slope', snippet: 'linreg_slope(${1:close}, ${2:14})', desc: 'Linear Regression Slope' },
-                    { name: 'linreg_intercept', snippet: 'linreg_intercept(${1:close}, ${2:14})', desc: 'Linear Regression Intercept' }
+                    { name: 'linreg_intercept', snippet: 'linreg_intercept(${1:close}, ${2:14})', desc: 'Linear Regression Intercept' },
+                    { name: 'rgba', snippet: 'rgba(${1:255}, ${2:255}, ${3:255}, ${4:1.0})', desc: 'Create custom color with red, green, blue, alpha' },
+                    { name: 'abs', snippet: 'abs(${1:close})', desc: 'Absolute value' },
+                    { name: 'ceil', snippet: 'ceil(${1:close})', desc: 'Ceiling rounding' },
+                    { name: 'floor', snippet: 'floor(${1:close})', desc: 'Floor rounding' },
+                    { name: 'sqrt', snippet: 'sqrt(${1:close})', desc: 'Square root' },
+                    { name: 'exp', snippet: 'exp(${1:close})', desc: 'Natural exponent (e^x)' },
+                    { name: 'log', snippet: 'log(${1:close})', desc: 'Natural logarithm' },
+                    { name: 'log10', snippet: 'log10(${1:close})', desc: 'Base 10 logarithm' },
+                    { name: 'pow', snippet: 'pow(${1:close}, ${2:2})', desc: 'Power function (base^exponent)' },
+                    { name: 'sin', snippet: 'sin(${1:close})', desc: 'Trigonometric sine' },
+                    { name: 'cos', snippet: 'cos(${1:close})', desc: 'Trigonometric cosine' },
+                    { name: 'tan', snippet: 'tan(${1:close})', desc: 'Trigonometric tangent' },
+                    { name: 'asin', snippet: 'asin(${1:close})', desc: 'Trigonometric arcsine' },
+                    { name: 'acos', snippet: 'acos(${1:close})', desc: 'Trigonometric arccosine' },
+                    { name: 'atan', snippet: 'atan(${1:close})', desc: 'Trigonometric arctangent' },
+                    { name: 'sign', snippet: 'sign(${1:close})', desc: 'Sign of value (1, -1, or 0)' },
+                    { name: 'min', snippet: 'min(${1:close}, ${2:open})', desc: 'Minimum of two values/series' },
+                    { name: 'max', snippet: 'max(${1:close}, ${2:open})', desc: 'Maximum of two values/series' },
+                    { name: 'nz', snippet: 'nz(${1:close}, ${2:0.0})', desc: 'Replace NaN/null with replacement value' },
+                    { name: 'na', snippet: 'na(${1:close})', desc: 'Check if value is NaN/null' },
+                    { name: 'wma', snippet: 'wma(${1:close}, ${2:14})', desc: 'Weighted Moving Average' },
+                    { name: 'rma', snippet: 'rma(${1:close}, ${2:14})', desc: 'Running Moving Average (used in ATR)' },
+                    { name: 'tr', snippet: 'tr()', desc: 'True Range' },
+                    { name: 'print', snippet: 'print(${1:value})', desc: 'Print debug message to developer console' },
+                    { name: 'plotbar', snippet: 'plotbar(${1:open}, ${2:high}, ${3:low}, ${4:close})', desc: 'Plot price bars on chart' }
                 ];
 
                 functions.forEach(f => {
+                    const doc = ZEN_DOCS[f.name];
+                    const docDetails = doc ? {
+                        detail: doc.signature,
+                        documentation: {
+                            value: `**Description:**\n${doc.desc}\n\n**Parameters:**\n` + 
+                                   doc.params.map(p => `- \`${p.name}\`: ${p.desc}`).join('\n')
+                        }
+                    } : {
+                        detail: f.desc,
+                        documentation: f.desc
+                    };
+
                     suggestions.push({
                         label: f.name,
                         kind: monaco.languages.CompletionItemKind.Function,
                         insertText: f.snippet,
                         insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                        detail: f.desc,
-                        documentation: f.desc
+                        range: range,
+                        ...docDetails
                     });
                 });
 
@@ -422,11 +1400,91 @@ export class ScriptEditorController {
                         label: ns,
                         kind: monaco.languages.CompletionItemKind.Module,
                         insertText: ns,
-                        detail: `Namespace ${ns}`
+                        detail: `Namespace ${ns}`,
+                        range: range
                     });
                 });
 
                 return { suggestions: suggestions };
+            }
+        });
+
+        // Rich Hover Provider for ZenScript
+        monaco.languages.registerHoverProvider('zenscript', {
+            provideHover: (model, position) => {
+                const word = model.getWordAtPosition(position);
+                if (!word) return null;
+
+                const line = model.getLineContent(position.lineNumber);
+                const beforeWord = line.substring(0, word.startColumn - 1);
+                const dotMatch = beforeWord.match(/([a-zA-Z_]\w*)\.$/);
+                
+                let lookupKey = word.word;
+                if (dotMatch) {
+                    lookupKey = `${dotMatch[1]}.${word.word}`;
+                }
+
+                const doc = ZEN_DOCS[lookupKey];
+                if (doc) {
+                    const contents = [];
+                    contents.push({ value: `\`\`\`zenscript\n${doc.signature}\n\`\`\`` });
+                    contents.push({ value: doc.desc });
+                    if (doc.params && doc.params.length > 0) {
+                        const paramsList = doc.params.map(p => `* \`${p.name}\`: ${p.desc}`).join('\n');
+                        contents.push({ value: `**Parameters:**\n${paramsList}` });
+                    }
+                    return {
+                        range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+                        contents: contents
+                    };
+                }
+
+                const builtInVars = {
+                    'open': 'Built-in time-series representing the Open price of each bar.',
+                    'high': 'Built-in time-series representing the High price of each bar.',
+                    'low': 'Built-in time-series representing the Low price of each bar.',
+                    'close': 'Built-in time-series representing the Close price of each bar.',
+                    'volume': 'Built-in time-series representing the Volume of each bar.',
+                    'time': 'Built-in time-series representing the timestamp of each bar.',
+                    'timestamp': 'Built-in time-series representing the timestamp of each bar.',
+                    'hl2': 'Built-in time-series: `(high + low) / 2`.',
+                    'hlc3': 'Built-in time-series: `(high + low) / close` or HLC average.',
+                    'ohlc4': 'Built-in time-series: `(open + high + low + close) / 4`.',
+                    'hlcc4': 'Built-in time-series: `(high + low + close + close) / 4`.',
+                    'bar_index': 'Built-in variable representing the current index of the bar (starting at 0).',
+                    'na': 'Representing a null, missing, or Not-a-Number value.'
+                };
+
+                if (builtInVars[word.word]) {
+                    return {
+                        range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+                        contents: [
+                            { value: `\`\`\`zenscript\nfloat ${word.word}\n\`\`\`` },
+                            { value: builtInVars[word.word] }
+                        ]
+                    };
+                }
+
+                const namespaces = {
+                    'color': 'Namespace containing color constants and color creation/manipulation functions.',
+                    'input': 'Namespace containing user-input configuration functions.',
+                    'box': 'Namespace containing drawing functions and property setters for box elements.',
+                    'label': 'Namespace containing drawing functions for label elements.',
+                    'line': 'Namespace containing drawing functions for line elements.',
+                    'array': 'Namespace containing array creation and manipulation functions.'
+                };
+
+                if (namespaces[word.word]) {
+                    return {
+                        range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+                        contents: [
+                            { value: `\`\`\`zenscript\nnamespace ${word.word}\n\`\`\`` },
+                            { value: namespaces[word.word] }
+                        ]
+                    };
+                }
+
+                return null;
             }
         });
 
@@ -477,404 +1535,18 @@ export class ScriptEditorController {
                 const functionName = textUntilPosition.substring(nameStart, nameEnd);
                 if (!functionName) return null;
                 
-                const signatures = {
-                    'sma': {
-                        label: 'float sma(float source, int length)',
-                        documentation: 'Simple Moving Average (SMA).',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Series of values to be averaged (e.g. close).' },
-                            { label: 'length', documentation: 'Type: int - Number of bars (e.g. 14).' }
-                        ]
-                    },
-                    'ema': {
-                        label: 'float ema(float source, int length)',
-                        documentation: 'Exponential Moving Average (EMA).',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Series of values to be averaged.' },
-                            { label: 'length', documentation: 'Type: int - Number of bars (e.g. 14).' }
-                        ]
-                    },
-                    'rsi': {
-                        label: 'float rsi(float source, int length)',
-                        documentation: 'Relative Strength Index (RSI).',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Series of values to calculate RSI.' },
-                            { label: 'length', documentation: 'Type: int - Number of bars.' }
-                        ]
-                    },
-                    'stoch': {
-                        label: 'float stoch(float source, float high, float low, int length)',
-                        documentation: 'Stochastic Oscillator calculation.',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Main source series (close).' },
-                            { label: 'high', documentation: 'Type: float - High price series.' },
-                            { label: 'low', documentation: 'Type: float - Low price series.' },
-                            { label: 'length', documentation: 'Type: int - Length (bars).' }
-                        ]
-                    },
-                    'bb': {
-                        label: 'float bb(float source, int length, float mult)',
-                        documentation: 'Bollinger Bands calculation.',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Main source series (close).' },
-                            { label: 'length', documentation: 'Type: int - Length (bars).' },
-                            { label: 'mult', documentation: 'Type: float - Standard deviation multiplier.' }
-                        ]
-                    },
-                    'atr': {
-                        label: 'float atr(int length)',
-                        documentation: 'Average True Range (ATR).',
-                        parameters: [
-                            { label: 'length', documentation: 'Type: int - Number of bars.' }
-                        ]
-                    },
-                    'supertrend': {
-                        label: 'float supertrend(float factor, int period)',
-                        documentation: 'SuperTrend calculation.',
-                        parameters: [
-                            { label: 'factor', documentation: 'Type: float - Multiplier factor.' },
-                            { label: 'period', documentation: 'Type: int - ATR period length.' }
-                        ]
-                    },
-                    'vwap': {
-                        label: 'float vwap(float source)',
-                        documentation: 'Volume Weighted Average Price (VWAP).',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Main source series.' }
-                        ]
-                    },
-                    'plot': {
-                        label: 'plot plot(float series, string title, color color, int width, string style, bool force_overlay)',
-                        documentation: 'Plots a time-series on the chart, returning a plot reference for area filling.',
-                        parameters: [
-                            { label: 'series', documentation: 'Type: float - Data series to plot (e.g. close).' },
-                            { label: 'title', documentation: 'Type: string - Title of the plot.' },
-                            { label: 'color', documentation: 'Type: color - Color of the plot line (e.g. color.blue).' },
-                            { label: 'width', documentation: 'Type: int - Width of the line (e.g. 2).' },
-                            { label: 'style', documentation: 'Type: string - Plot style ("line", "histogram", "columns").' },
-                            { label: 'force_overlay', documentation: 'Type: bool - Force plot on main chart.' }
-                        ]
-                    },
-                    'plotshape': {
-                        label: 'void plotshape(float|bool series, string title, string style, string location, color color, string size, string text)',
-                        documentation: 'Plots a shape at specific locations when a condition is met.',
-                        parameters: [
-                            { label: 'series', documentation: 'Type: float|bool - Boolean/float condition series.' },
-                            { label: 'title', documentation: 'Type: string - Plot title.' },
-                            { label: 'style', documentation: 'Type: string - Shape style (e.g., "triangleup", "triangledown").' },
-                            { label: 'location', documentation: 'Type: string - Shape location (e.g., "abovebar", "belowbar").' },
-                            { label: 'color', documentation: 'Type: color - Color of the shape.' },
-                            { label: 'size', documentation: 'Type: string - Size of the shape.' },
-                            { label: 'text', documentation: 'Type: string - Annotation text.' }
-                        ]
-                    },
-                    'plotchar': {
-                        label: 'void plotchar(float|bool series, string title, string char, string location, color color, string size)',
-                        documentation: 'Plots characters on the chart.',
-                        parameters: [
-                            { label: 'series', documentation: 'Type: float|bool - Boolean/float condition series.' },
-                            { label: 'title', documentation: 'Type: string - Plot title.' },
-                            { label: 'char', documentation: 'Type: string - Character to plot (e.g. "B" or "S").' },
-                            { label: 'location', documentation: 'Type: string - Location on chart.' },
-                            { label: 'color', documentation: 'Type: color - Color of character.' },
-                            { label: 'size', documentation: 'Type: string - Size.' }
-                        ]
-                    },
-                    'plotarrow': {
-                        label: 'void plotarrow(float|bool series, string title, color colorup, color colordown)',
-                        documentation: 'Plots up/down arrows based on series value.',
-                        parameters: [
-                            { label: 'series', documentation: 'Type: float|bool - Data series (positive plots up, negative plots down).' },
-                            { label: 'title', documentation: 'Type: string - Plot title.' },
-                            { label: 'colorup', documentation: 'Type: color - Up arrow color.' },
-                            { label: 'colordown', documentation: 'Type: color - Down arrow color.' }
-                        ]
-                    },
-                    'plotcandle': {
-                        label: 'void plotcandle(float open, float high, float low, float close, string title, color color, color wickcolor, color bordercolor)',
-                        documentation: 'Plots a custom candlestick series.',
-                        parameters: [
-                            { label: 'open', documentation: 'Type: float - Open price series.' },
-                            { label: 'high', documentation: 'Type: float - High price series.' },
-                            { label: 'low', documentation: 'Type: float - Low price series.' },
-                            { label: 'close', documentation: 'Type: float - Close price series.' },
-                            { label: 'title', documentation: 'Type: string - Plot title in legend.' },
-                            { label: 'color', documentation: 'Type: color - Body fill color.' },
-                            { label: 'wickcolor', documentation: 'Type: color - Wick color.' },
-                            { label: 'bordercolor', documentation: 'Type: color - Border color.' }
-                        ]
-                    },
-                    'hline': {
-                        label: 'hline hline(float price, string title, color color, int width, string style)',
-                        documentation: 'Plots a constant horizontal price line, returning an hline reference for area filling.',
-                        parameters: [
-                            { label: 'price', documentation: 'Type: float - Price level.' },
-                            { label: 'title', documentation: 'Type: string - Title.' },
-                            { label: 'color', documentation: 'Type: color - Line color.' },
-                            { label: 'width', documentation: 'Type: int - Line width.' },
-                            { label: 'style', documentation: 'Type: string - Line style.' }
-                        ]
-                    },
-                    'bgcolor': {
-                        label: 'void bgcolor(color color, string title, bool force_overlay)',
-                        documentation: 'Fills the background color of the chart.',
-                        parameters: [
-                            { label: 'color', documentation: 'Type: color - Background color.' },
-                            { label: 'title', documentation: 'Type: string - Title.' },
-                            { label: 'force_overlay', documentation: 'Type: bool - Force background fill on main chart.' }
-                        ]
-                    },
-                    'barcolor': {
-                        label: 'void barcolor(color color, string title, bool force_overlay)',
-                        documentation: 'Colors the chart bars/candles.',
-                        parameters: [
-                            { label: 'color', documentation: 'Type: color - Bar color.' },
-                            { label: 'title', documentation: 'Type: string - Title.' },
-                            { label: 'force_overlay', documentation: 'Type: bool - Force color on main chart.' }
-                        ]
-                    },
-                    'fill': {
-                        label: 'void fill(plot p1, plot p2, color color, string title)',
-                        documentation: 'Fills the region between two plot lines.',
-                        parameters: [
-                            { label: 'p1', documentation: 'Type: plot - First plot reference.' },
-                            { label: 'p2', documentation: 'Type: plot - Second plot reference.' },
-                            { label: 'color', documentation: 'Type: color - Fill color.' },
-                            { label: 'title', documentation: 'Type: string - Title.' }
-                        ]
-                    },
-                    'crossover': {
-                        label: 'bool crossover(float s1, float s2)',
-                        documentation: 'Checks if series 1 crosses above series 2.',
-                        parameters: [
-                            { label: 's1', documentation: 'Type: float - First data series.' },
-                            { label: 's2', documentation: 'Type: float - Second data series.' }
-                        ]
-                    },
-                    'crossunder': {
-                        label: 'bool crossunder(float s1, float s2)',
-                        documentation: 'Checks if series 1 crosses below series 2.',
-                        parameters: [
-                            { label: 's1', documentation: 'Type: float - First data series.' },
-                            { label: 's2', documentation: 'Type: float - Second data series.' }
-                        ]
-                    },
-                    'highest': {
-                        label: 'float highest(float source, int length)',
-                        documentation: 'Highest value in a lookback window.',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Source data series.' },
-                            { label: 'length', documentation: 'Type: int - Lookback length.' }
-                        ]
-                    },
-                    'lowest': {
-                        label: 'float lowest(float source, int length)',
-                        documentation: 'Lowest value in a lookback window.',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Source data series.' },
-                            { label: 'length', documentation: 'Type: int - Lookback length.' }
-                        ]
-                    },
-                    'stdev': {
-                        label: 'float stdev(float source, int length)',
-                        documentation: 'Standard Deviation.',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Source data series.' },
-                            { label: 'length', documentation: 'Type: int - Lookback length.' }
-                        ]
-                    },
-                    'variance': {
-                        label: 'float variance(float source, int length)',
-                        documentation: 'Sample variance of a series.',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Source data series.' },
-                            { label: 'length', documentation: 'Type: int - Lookback length.' }
-                        ]
-                    },
-                    'covariance': {
-                        label: 'float covariance(float source1, float source2, int length)',
-                        documentation: 'Covariance of two series.',
-                        parameters: [
-                            { label: 'source1', documentation: 'Type: float - First source series.' },
-                            { label: 'source2', documentation: 'Type: float - Second source series.' },
-                            { label: 'length', documentation: 'Type: int - Lookback length.' }
-                        ]
-                    },
-                    'correlation': {
-                        label: 'float correlation(float source1, float source2, int length)',
-                        documentation: 'Pearson Correlation Coefficient of two series.',
-                        parameters: [
-                            { label: 'source1', documentation: 'Type: float - First source series.' },
-                            { label: 'source2', documentation: 'Type: float - Second source series.' },
-                            { label: 'length', documentation: 'Type: int - Lookback length.' }
-                        ]
-                    },
-                    'linreg': {
-                        label: 'float linreg(float source, int length, int offset)',
-                        documentation: 'Linear regression curve value at offset.',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Source data series.' },
-                            { label: 'length', documentation: 'Type: int - Lookback length.' },
-                            { label: 'offset', documentation: 'Type: int - Bar offset (optional, default: 0).' }
-                        ]
-                    },
-                    'linreg_slope': {
-                        label: 'float linreg_slope(float source, int length)',
-                        documentation: 'Linear regression slope.',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Source data series.' },
-                            { label: 'length', documentation: 'Type: int - Lookback length.' }
-                        ]
-                    },
-                    'linreg_intercept': {
-                        label: 'float linreg_intercept(float source, int length)',
-                        documentation: 'Linear regression intercept.',
-                        parameters: [
-                            { label: 'source', documentation: 'Type: float - Source data series.' },
-                            { label: 'length', documentation: 'Type: int - Lookback length.' }
-                        ]
-                    },
-                    'indicator': {
-                        label: 'void indicator(string title, string shorttitle, bool overlay, int max_lines_count, int max_labels_count)',
-                        documentation: 'Declares script properties (Must be called once at script start).',
-                        parameters: [
-                            { label: 'title', documentation: 'Type: string - Full name of the indicator.' },
-                            { label: 'shorttitle', documentation: 'Type: string - Short name shown in legend.' },
-                            { label: 'overlay', documentation: 'Type: bool - Render on main chart if true.' },
-                            { label: 'max_lines_count', documentation: 'Type: int - Max lines.' },
-                            { label: 'max_labels_count', documentation: 'Type: int - Max labels.' }
-                        ]
-                    },
-                    'input.int': {
-                        label: 'int input.int(int defval, string title, int minval, int maxval)',
-                        documentation: 'Declares an integer user-input configuration.',
-                        parameters: [
-                            { label: 'defval', documentation: 'Type: int - Default integer value.' },
-                            { label: 'title', documentation: 'Type: string - Input title label.' },
-                            { label: 'minval', documentation: 'Type: int - Minimum permitted value.' },
-                            { label: 'maxval', documentation: 'Type: int - Maximum permitted value.' }
-                        ]
-                    },
-                    'input.float': {
-                        label: 'float input.float(float defval, string title, float minval, float maxval)',
-                        documentation: 'Declares a float user-input configuration.',
-                        parameters: [
-                            { label: 'defval', documentation: 'Type: float - Default float value.' },
-                            { label: 'title', documentation: 'Type: string - Input title label.' },
-                            { label: 'minval', documentation: 'Type: float - Minimum permitted value.' },
-                            { label: 'maxval', documentation: 'Type: float - Maximum permitted value.' }
-                        ]
-                    },
-                    'input.bool': {
-                        label: 'bool input.bool(bool defval, string title)',
-                        documentation: 'Declares a boolean user-input checkbox.',
-                        parameters: [
-                            { label: 'defval', documentation: 'Type: bool - Default boolean value.' },
-                            { label: 'title', documentation: 'Type: string - Input title label.' }
-                        ]
-                    },
-                    'input.string': {
-                        label: 'string input.string(string defval, string title, any options)',
-                        documentation: 'Declares a string user-input text or dropdown.',
-                        parameters: [
-                            { label: 'defval', documentation: 'Type: string - Default string value.' },
-                            { label: 'title', documentation: 'Type: string - Input title label.' },
-                            { label: 'options', documentation: 'Type: any - Dropdown options array (e.g. ["EMA", "SMA"]).' }
-                        ]
-                    },
-                    'input.color': {
-                        label: 'color input.color(color defval, string title)',
-                        documentation: 'Declares a color user-input colorpicker.',
-                        parameters: [
-                            { label: 'defval', documentation: 'Type: color - Default color value.' },
-                            { label: 'title', documentation: 'Type: string - Input title label.' }
-                        ]
-                    },
-                    'input.source': {
-                        label: 'float input.source(float defval, string title)',
-                        documentation: 'Declares a data source selector (close, open, high, low).',
-                        parameters: [
-                            { label: 'defval', documentation: 'Type: float - Default data source (close).' },
-                            { label: 'title', documentation: 'Type: string - Input title label.' }
-                        ]
-                    },
-                    'color.new': {
-                        label: 'color color.new(color color, int transparency)',
-                        documentation: 'Applies transparency level to a color.',
-                        parameters: [
-                            { label: 'color', documentation: 'Type: color - Base color (e.g. color.blue).' },
-                            { label: 'transparency', documentation: 'Type: int - Transparency percentage (0 to 100).' }
-                        ]
-                    },
-                    'color.rgb': {
-                        label: 'color color.rgb(int red, int green, int blue, int transparency)',
-                        documentation: 'Creates a custom color from RGB values.',
-                        parameters: [
-                            { label: 'red', documentation: 'Type: int - Red component (0 to 255).' },
-                            { label: 'green', documentation: 'Type: int - Green component (0 to 255).' },
-                            { label: 'blue', documentation: 'Type: int - Blue component (0 to 255).' },
-                            { label: 'transparency', documentation: 'Type: int - Transparency percentage (optional, 0 to 100).' }
-                        ]
-                    },
-                    'color.gradient': {
-                        label: 'color color.gradient(float value, float bottom_value, float top_value, color bottom_color, color top_color)',
-                        documentation: 'Calculates a color dynamically based on a value between bottom and top values, interpolating between two colors.',
-                        parameters: [
-                            { label: 'value', documentation: 'Type: float - The series or value to base the gradient calculation on.' },
-                            { label: 'bottom_value', documentation: 'Type: float - The lower boundary value representing the bottom of the gradient range.' },
-                            { label: 'top_value', documentation: 'Type: float - The upper boundary value representing the top of the gradient range.' },
-                            { label: 'bottom_color', documentation: 'Type: color - Color corresponding to bottom_value.' },
-                            { label: 'top_color', documentation: 'Type: color - Color corresponding to top_value.' }
-                        ]
-                    },
-                    'box.new': {
-                        label: 'box box.new(int left, float top, int right, float bottom, color border_color, int border_width, string border_style, string extend, string xloc, color bgcolor, string text, string text_size, color text_color)',
-                        documentation: 'Draws a box shape on the chart.',
-                        parameters: [
-                            { label: 'left', documentation: 'Type: int - Left boundary (bar index).' },
-                            { label: 'top', documentation: 'Type: float - Top boundary price level.' },
-                            { label: 'right', documentation: 'Type: int - Right boundary (bar index).' },
-                            { label: 'bottom', documentation: 'Type: float - Bottom boundary price level.' },
-                            { label: 'border_color', documentation: 'Type: color - Color of the box border.' },
-                            { label: 'border_width', documentation: 'Type: int - Width of the box border (pixels).' },
-                            { label: 'border_style', documentation: 'Type: string - Border style ("solid", "dashed", "dotted").' },
-                            { label: 'extend', documentation: 'Type: string - Extend box horizontally ("none", "left", "right", "both").' },
-                            { label: 'xloc', documentation: 'Type: string - X coordinate positioning format ("bar_index" or "bar_time").' },
-                            { label: 'bgcolor', documentation: 'Type: color - Background fill color.' },
-                            { label: 'text', documentation: 'Type: string - Text content to display inside the box.' },
-                            { label: 'text_size', documentation: 'Type: string - Text size ("small", "normal", "large", "huge").' },
-                            { label: 'text_color', documentation: 'Type: color - Color of the text.' }
-                        ]
-                    },
-                    'label.new': {
-                        label: 'label label.new(int x, float y, string text, string xloc, string yloc, color color, string style, color textcolor, string size)',
-                        documentation: 'Creates an interactive text label on the chart.',
-                        parameters: [
-                            { label: 'x', documentation: 'Type: int - X coordinate (bar index).' },
-                            { label: 'y', documentation: 'Type: float - Y coordinate (price level).' },
-                            { label: 'text', documentation: 'Type: string - Label text content.' },
-                            { label: 'xloc', documentation: 'Type: string - X positioning coordinate system ("bar_index").' },
-                            { label: 'yloc', documentation: 'Type: string - Y positioning coordinate system ("price", "abovebar", "belowbar").' },
-                            { label: 'color', documentation: 'Type: color - Background color of the label.' },
-                            { label: 'style', documentation: 'Type: string - Label shape style (e.g. "label_up", "label_down", "label_center").' },
-                            { label: 'textcolor', documentation: 'Type: color - Label text color.' },
-                            { label: 'size', documentation: 'Type: string - Text size ("small", "normal", "large").' }
-                        ]
-                    },
-                    'line.new': {
-                        label: 'line line.new(int x1, float y1, int x2, float y2, color color, int width, string style)',
-                        documentation: 'Draws a customized line segment on the chart.',
-                        parameters: [
-                            { label: 'x1', documentation: 'Type: int - Start X coordinate (bar index).' },
-                            { label: 'y1', documentation: 'Type: float - Start Y coordinate (price).' },
-                            { label: 'x2', documentation: 'Type: int - End X coordinate (bar index).' },
-                            { label: 'y2', documentation: 'Type: float - End Y coordinate (price).' },
-                            { label: 'color', documentation: 'Type: color - Color of the line.' },
-                            { label: 'width', documentation: 'Type: int - Width of the line (pixels).' },
-                            { label: 'style', documentation: 'Type: string - Line style ("solid", "dashed", "dotted").' }
-                        ]
-                    }
-                };
+                const signatures = {};
+                for (const [key, doc] of Object.entries(ZEN_DOCS)) {
+                    const params = (doc.params || []).map(p => ({
+                        label: p.name,
+                        documentation: p.desc
+                    }));
+                    signatures[key] = {
+                        label: doc.signature,
+                        documentation: doc.desc,
+                        parameters: params
+                    };
+                }
 
                 // Dynamic Scan of the entire document to parse custom functions signature details!
                 const docText = model.getValue();
@@ -964,10 +1636,16 @@ export class ScriptEditorController {
             this.updateButtonStates();
         });
 
-        // Monaco content change listener
+        // Monaco content change listener with 300ms debounce to prevent typing lag
+        let validationTimeout = null;
         this.editor.onDidChangeModelContent(() => {
-            this.validateScript();
             this.updateButtonStates();
+            if (validationTimeout) {
+                clearTimeout(validationTimeout);
+            }
+            validationTimeout = setTimeout(() => {
+                this.validateScript();
+            }, 300);
         });
     }
 
