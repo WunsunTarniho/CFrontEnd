@@ -2,10 +2,10 @@ export class AdvancedLineSetting {
     static instances = new Set();
     static customColors = JSON.parse(localStorage.getItem('chart_custom_colors') || '[]');
 
-    constructor(containerId, options = {}) {
-        AdvancedLineSetting.instances.add(this);
-        this.container = document.getElementById(containerId);
+    constructor(containerOrId, options = {}) {
+        this.container = typeof containerOrId === 'string' ? document.getElementById(containerOrId) : containerOrId;
         if (!this.container) return;
+        AdvancedLineSetting.instances.add(this);
 
         this.options = {
             showColor: true,
@@ -16,6 +16,7 @@ export class AdvancedLineSetting {
             defaultOpacity: 1,
             defaultThickness: 2,
             defaultStyle: 'solid',
+            compact: false,
             onChange: () => { },
             ...options
         };
@@ -47,7 +48,7 @@ export class AdvancedLineSetting {
             '#d32f2f', '#f57c00', '#fbc02d', '#388e3c', '#00796b', '#0097a7', '#1976d2', '#512da8', '#7b1fa2', '#c2185b'
         ];
 
-        this.popoverId = `popover-${containerId}`;
+        this.popoverId = `line-setting-popover-${this.container.id || Math.random().toString(36).substr(2, 9)}`;
         this.init();
     }
 
@@ -69,9 +70,6 @@ export class AdvancedLineSetting {
     }
 
     init() {
-        // Build the popover ID early so we can use it for cleanup
-        this.popoverId = `line-setting-popover-${this.container.id}`;
-
         // Cleanup existing popover from the DOM if it exists
         const oldPopover = document.getElementById(this.popoverId);
         if (oldPopover) {
@@ -93,9 +91,10 @@ export class AdvancedLineSetting {
         triggerWrapper.className = 'line-setting-container';
 
         const isCombined = this.options.showThickness || this.options.showStyle;
+        const isCompact = this.options.compact;
         triggerWrapper.innerHTML = `
-            <div class="line-setting-trigger ${isCombined ? 'combined-trigger' : ''}" title="Settings">
-                <div class="line-setting-trigger-color"></div>
+            <div class="line-setting-trigger ${isCombined ? 'combined-trigger' : ''} ${isCompact ? 'compact-trigger' : ''}" title="Settings">
+                <div class="line-setting-trigger-color checkerboard"></div>
                 ${isCombined ? `<div class="trigger-line-preview"></div>` : ''}
             </div>
         `;
@@ -161,9 +160,9 @@ export class AdvancedLineSetting {
 
         pickerPopup.innerHTML = `
             <div class="picker-top-bar" style="display: flex; align-items: center; gap: 4px; margin-bottom: 12px; height: 24px;">
-                <div class="picker-preview" id="${this.popoverId}-picker-preview" style="width: 24px; height: 100%; border-radius: 4px; border: 1px solid #363a45; flex-shrink: 0;"></div>
+                <div class="picker-preview checkerboard" id="${this.popoverId}-picker-preview" style="width: 24px; height: 100%; border-radius: 4px; border: 1px solid #363a45; flex-shrink: 0;"></div>
                 <input type="text" class="picker-hex-input" id="${this.popoverId}-picker-hex" placeholder="FFFFFF" style="width: 70px; flex-shrink: 0; background: #2a2e39; border: 1px solid #363a45; color: #d1d4dc; padding: 4px; border-radius: 4px; font-size: 11px; font-family: monospace; height: 100%; box-sizing: border-box;" value="FFFFFF">
-                <button class="picker-add-btn" id="${this.popoverId}-picker-add" style="flex: 1; background: #f0f3fa; color: #131722; border: none; padding: 0 4px; border-radius: 4px; font-size: 10px; font-weight: 600; cursor: pointer; height: 100%; white-space: nowrap;">Add</button>
+                <button class="picker-add-btn" id="${this.popoverId}-picker-add" style="flex: 1; background: #f0f3fa; color: #000000; border: none; padding: 0 4px; border-radius: 4px; font-size: 10px; font-weight: 600; cursor: pointer; height: 100%; white-space: nowrap;">Add</button>
             </div>
             <div class="picker-main" style="display: flex; gap: 12px; height: 140px;">
                 <div class="picker-sv-square" id="${this.popoverId}-picker-sv" style="flex: 1; position: relative; border-radius: 4px; overflow: hidden; cursor: crosshair;">
@@ -189,8 +188,8 @@ export class AdvancedLineSetting {
     renderColorGrid() {
         return this.colors.map((c, i) => {
             let html = `
-                <div class="color-palette-item ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
-                     style="background: ${c}" 
+                <div class="color-palette-item checkerboard ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
+                     style="--checkerboard-color: ${c}" 
                      data-color="${c}"></div>
             `;
             if (i === 19) {
@@ -281,21 +280,31 @@ export class AdvancedLineSetting {
             }
         }, true);
 
-        // Update position on window events
-        window.addEventListener('resize', () => {
-            if (this.state.isOpen) this.updatePopoverPosition();
-        });
-
-        let parent = this.container.parentElement;
-        while (parent) {
-            if (parent === document.body) break;
-            const overflow = window.getComputedStyle(parent).overflowY;
-            if (overflow === 'auto' || overflow === 'scroll') {
-                parent.addEventListener('scroll', () => {
-                    if (this.state.isOpen) this.updatePopoverPosition();
+        // Bind global optimized resize/scroll listeners once
+        if (!AdvancedLineSetting.globalScrollBound) {
+            window.addEventListener('resize', () => {
+                AdvancedLineSetting.instances.forEach(instance => {
+                    if (!document.body.contains(instance.container)) {
+                        AdvancedLineSetting.instances.delete(instance);
+                        return;
+                    }
+                    if (instance.state && instance.state.isOpen) instance.updatePopoverPosition();
                 });
-            }
-            parent = parent.parentElement;
+            });
+            
+            window.addEventListener('scroll', (e) => {
+                AdvancedLineSetting.instances.forEach(instance => {
+                    if (!document.body.contains(instance.container)) {
+                        AdvancedLineSetting.instances.delete(instance);
+                        return;
+                    }
+                    if (instance.state && instance.state.isOpen && (e.target === document || (e.target.contains && e.target.contains(instance.container)))) {
+                        instance.updatePopoverPosition();
+                    }
+                });
+            }, true);
+            
+            AdvancedLineSetting.globalScrollBound = true;
         }
     }
 
@@ -485,7 +494,7 @@ export class AdvancedLineSetting {
             svHandle.style.top = `${(1 - v) * 100}%`;
         }
         if (hueHandle) hueHandle.style.top = `${(h / 360) * 100}%`;
-        if (preview) preview.style.backgroundColor = hex;
+        if (preview) preview.style.setProperty('--checkerboard-color', hex);
         if (hexInput) {
             // Only update hex input if user is not typing in it
             if (document.activeElement !== hexInput) {
@@ -582,11 +591,11 @@ export class AdvancedLineSetting {
         const rect = this.container.getBoundingClientRect();
         const popoverWidth = 240;
 
-        let left = rect.left;
-        let top = rect.bottom + 8;
+        let left = rect.right + 8;
+        let top = rect.top;
 
         if (left + popoverWidth > window.innerWidth) {
-            left = window.innerWidth - popoverWidth - 10;
+            left = rect.left - popoverWidth - 8;
         }
 
         const popoverHeight = this.popover.offsetHeight || 250;
@@ -612,8 +621,8 @@ export class AdvancedLineSetting {
             const customGrid = document.getElementById(gridId);
             if (customGrid) {
                 const customColorsHtml = AdvancedLineSetting.customColors.map(c => `
-                    <div class="color-palette-item ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
-                         style="background: ${c}" 
+                    <div class="color-palette-item checkerboard ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
+                         style="--checkerboard-color: ${c}" 
                          data-color="${c}"></div>
                 `).join('') + `
                     <div class="color-palette-item add-custom-color" style="display: flex; align-items: center; justify-content: center; background: transparent; border: 1px dashed #363a45; position: relative;">
@@ -635,18 +644,32 @@ export class AdvancedLineSetting {
             btn.classList.toggle('active', btn.dataset.style === this.state.style);
         });
 
+        if (this.options.showOpacity) {
+            const slider = this.popover.querySelector('.opacity-slider');
+            const valueText = this.popover.querySelector('.opacity-value');
+            if (slider) slider.value = this.state.opacity * 100;
+            if (valueText) valueText.textContent = `${Math.round(this.state.opacity * 100)}%`;
+        }
+
         this.updateTriggerColor();
+    }
+
+    destroy() {
+        AdvancedLineSetting.instances.delete(this);
+        if (this.popover) this.popover.remove();
+        if (this.pickerPopup) this.pickerPopup.remove();
+        if (this.container) this.container.innerHTML = '';
     }
 
     updateTriggerColor() {
         const triggerColor = this.container.querySelector('.line-setting-trigger-color');
         if (triggerColor) {
-            triggerColor.style.background = this.getColorWithOpacity();
+            triggerColor.style.setProperty('--checkerboard-color', this.getColorWithOpacity());
         }
 
         const linePreview = this.container.querySelector('.trigger-line-preview');
         if (linePreview) {
-            linePreview.style.background = this.getColorWithOpacity();
+            linePreview.style.backgroundColor = this.getColorWithOpacity();
             linePreview.style.height = `${this.state.thickness}px`;
         }
     }
@@ -696,6 +719,16 @@ export class AdvancedLineSetting {
             } else if (values.hexAlpha.length === 7) {
                 this.state.color = values.hexAlpha;
                 this.state.opacity = 1;
+            } else if (values.hexAlpha.startsWith('rgba')) {
+                const match = values.hexAlpha.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+                if (match) {
+                    const r = parseInt(match[1]).toString(16).padStart(2, '0');
+                    const g = parseInt(match[2]).toString(16).padStart(2, '0');
+                    const b = parseInt(match[3]).toString(16).padStart(2, '0');
+                    const a = match[4] ? parseFloat(match[4]) : 1;
+                    this.state.color = `#${r}${g}${b}`;
+                    this.state.opacity = a;
+                }
             }
         }
 

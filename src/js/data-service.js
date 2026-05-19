@@ -1,401 +1,444 @@
 import {
     getDrawingTools,
-    searchStock,
     findStockByTicker,
-    bulkSyncDrawingTools,
     getLayouts,
-    saveLayout,
     updateLayout,
-    deleteLayout,
-    touchLayout
+    touchLayout,
+    API_BASE
 } from './service.js';
 import { DEFAULT_WATCHLIST_SYMBOLS } from './constants.js';
 
-// ── Item C: Smart Base Resolution ─────────────────────────────────────
-export const TF_CONFIG = {
-    '1s': { apiInterval: '1s', cacheKey: '1s', minutes: 1 / 60 },
-    '5s': { apiInterval: '1s', cacheKey: '1s', minutes: 5 / 60 },
-    '10s': { apiInterval: '1s', cacheKey: '1s', minutes: 10 / 60 },
-    '15s': { apiInterval: '1s', cacheKey: '1s', minutes: 15 / 60 },
-    '30s': { apiInterval: '1s', cacheKey: '1s', minutes: 30 / 60 },
-    '45s': { apiInterval: '1s', cacheKey: '1s', minutes: 45 / 60 },
-    '1m': { apiInterval: '1m', cacheKey: '1m', minutes: 1 },
-    '2m': { apiInterval: '1m', cacheKey: '1m', minutes: 2 },
-    '3m': { apiInterval: '3m', cacheKey: '3m', minutes: 3 },
-    '5m': { apiInterval: '5m', cacheKey: '5m', minutes: 5 },
-    '10m': { apiInterval: '5m', cacheKey: '5m', minutes: 10 },
-    '15m': { apiInterval: '15m', cacheKey: '15m', minutes: 15 },
-    '30m': { apiInterval: '30m', cacheKey: '30m', minutes: 30 },
-    '45m': { apiInterval: '15m', cacheKey: '15m', minutes: 45 },
-    '90m': { apiInterval: '30m', cacheKey: '30m', minutes: 90 },
-    '1h': { apiInterval: '1h', cacheKey: '1h', minutes: 60 },
-    '2h': { apiInterval: '2h', cacheKey: '2h', minutes: 120 },
-    '4h': { apiInterval: '4h', cacheKey: '4h', minutes: 240 },
-    '6h': { apiInterval: '6h', cacheKey: '6h', minutes: 360 },
-    '12h': { apiInterval: '12h', cacheKey: '12h', minutes: 720 },
-    '1d': { apiInterval: '1d', cacheKey: '1d', minutes: 1440 },
-    '1w': { apiInterval: '1d', cacheKey: '1d', special: 'week' },
-    '1mo': { apiInterval: '1d', cacheKey: '1d', special: 'month', months: 1 },
-    '3mo': { apiInterval: '1d', cacheKey: '1d', special: 'quarter', months: 3 },
-    '6mo': { apiInterval: '1d', cacheKey: '1d', special: 'halfyear', months: 6 },
-    '12mo': { apiInterval: '1d', cacheKey: '1d', special: 'year', months: 12 },
-};
+const historyCache = new Map();
 
-export const candleCache = {};
+/**
+ * --------------------------------------------------------------------------
+ * CORE DATA FETCHING
+ * --------------------------------------------------------------------------
+ */
 
-// Fetch candles from API via backend proxy
-export async function fetchStockData(stock, timeframe, endDateTs = null) {
+export async function fetchMarketHistory(marketInfo, timeframe, endTime = null, value = null, unit = null) {
+    const symbol = marketInfo.symbol || 'BTCUSDT';
+    const exchange = marketInfo.exchange || 'BINANCE';
+    const isLatest = !endTime;
+
+    // Use stored value/unit if not provided (for pagination)
+    if (!value && window.chart?.tfValue) value = window.chart.tfValue;
+    if (!unit && window.chart?.tfUnit) unit = window.chart.tfUnit;
+
+    const cacheKey = `${symbol}:${timeframe}:${exchange}:${endTime || 'latest'}`;
+
+    // Cache policy (Daily segments only)
+    if (timeframe === '1d' && !isLatest && historyCache.has(cacheKey)) {
+        return historyCache.get(cacheKey);
+    }
+
     try {
-        const loading = document.getElementById('loading-indicator');
-        if (loading) loading.style.display = 'block';
+        const params = new URLSearchParams({
+            symbol,
+            exchange,
+            limit: (unit === 't' || unit === 'r') ? 50 : 1000,
+            _: Date.now()
+        });
 
-        const ticker = stock.ticker;
-        const apiBase = 'http://localhost:5000';
-        let url = `${apiBase}/api/market/history?symbol=${ticker}&timeframe=${timeframe}&market=${stock.market}`;
-        if (endDateTs) url += `&endDateTs=${endDateTs}`;
+        let url;
+        if (unit === 't') {
+            params.set('ticksPerCandle', value);
+            url = `${API_BASE}/api/v1/market/ticks?${params}`;
+        } else if (unit === 'r') {
+            params.set('rangePerCandle', value);
+            url = `${API_BASE}/api/v1/market/range?${params}`;
+        } else {
+            params.set('timeframe', timeframe);
+            if (endTime) params.set('endTime', endTime);
+            url = `${API_BASE}/api/v1/market/history?${params}`;
+        }
 
         const response = await fetch(url);
-        if (!response.ok) throw new Error(`Backend returned ${response.status}`);
+        if (!response.ok) throw new Error(`History fetch failed: ${response.status}`);
 
         const data = await response.json();
-        return data || [];
+        if (timeframe === '1d' && !isLatest && data?.candles?.length > 0) {
+            historyCache.set(cacheKey, data);
+        }
+
+        return data || { candles: [], meta: {} };
     } catch (error) {
-        console.error('Error fetching data from backend:', error);
-        return [];
-    } finally {
-        const loading = document.getElementById('loading-indicator');
-        if (loading) loading.style.display = 'none';
+        console.error('[DataService] History Error:', error);
+        return { candles: [], meta: {} };
     }
 }
 
-export async function loadStockData(layoutId = null, forcedStock = null) {
+/**
+ * --------------------------------------------------------------------------
+ * MAIN SESSION INITIALIZATION
+ * --------------------------------------------------------------------------
+ */
+
+export async function initMarketSession(layoutId = null, forcedMarket = null, skipLayoutRestore = false, skipDirty = false) {
     if (!window.chart) return;
     window.chart.isLoading = true;
+    window.chart.isRestoring = true;
 
-    // --- 1. Layout Logic First ---
-    const BTC_ID = 'cb05e2be67f3d035ad46ec72';
-    const layouts = await getLayouts();
-    let activeLayout = layoutId ? layouts.find(l => l._id === layoutId) : layouts[0];
+    try {
+        // 1. Identify which layout and symbol to load
+        const layouts = await getLayouts();
+        const activeLayout = resolveActiveLayout(layouts, layoutId);
+        const isInitialLoad = !window.chart.symbol;
 
-    // --- 2. Resolve Stock ID ---
-    let stock_id;
-    if (forcedStock) {
-        stock_id = forcedStock._id;
-    } else if (layoutId && activeLayout && activeLayout.lastTickerId) {
-        // If switching layout explicitly, prioritize its last ticker
-        stock_id = activeLayout.lastTickerId.ticker || activeLayout.lastTickerId;
-    } else {
-        const searchInput = document.getElementById('stock-search');
-        stock_id = (searchInput && searchInput.dataset.stockId) || window.chart.currentStockId || 'BTCUSDT';
-    }
+        const { symbol, exchange, originalSymbol, market, type } = determineTargetSymbol(activeLayout, forcedMarket);
+        const marketData = await resolveMarketMetadata(symbol, exchange, originalSymbol, market, type);
+        
+        // Use database timeframe on first load, else preserve session timeframe
+        const timeframe = isInitialLoad ? resolveTimeframe(activeLayout) : (window.chart.timeframe || '1d');
+        const chartMode = isInitialLoad ? (activeLayout?.chartState?.chartMode || 'candle') : (window.chart.chartMode || 'candle');
 
-    // Final safety check for stock_id
-    if (!stock_id || stock_id === 'undefined') {
-        stock_id = 'BTCUSDT';
-    }
+        console.log(`[DataService] Loading: ${marketData.symbol} @ ${marketData.exchange} [${timeframe}]`, marketData);
 
-    let timeframe = document.querySelector('.tf-option.active')?.dataset.tf || '1d';
+        // 3. Prepare Chart for new data
+        prepareChartForSwitch(marketData);
+        updateMarketUI(marketData.market, marketData.exchange);
 
-    // Logic: Only override UI timeframe if:
-    // 1. Initial page load (window.chart.symbol is null)
-    // 2. We are explicitly switching to a DIFFERENT layout (layoutId exists and is new)
-    const isInitialLoad = !window.chart?.symbol;
-    const isLayoutSwitch = layoutId && layoutId !== window.chart?.currentLayoutId;
+        // 4. Fetch and Load Data
+        console.log(`[DataService] Calling fetchMarketHistory for ${marketData.symbol}...`);
 
-    if ((isLayoutSwitch || isInitialLoad) && activeLayout?.chartState?.timeframe) {
-        timeframe = activeLayout.chartState.timeframe;
-    }
+        // One-time parse during restoration to set the initial structured state
+        const match = timeframe.match(/^(\d+)([trsmhdw]|mo)$/);
+        window.chart.tfValue = match ? match[1] : timeframe;
+        window.chart.tfUnit = match ? match[2] : '';
 
-    const response = await findStockByTicker(stock_id);
-    let stock = response?.data;
+        const history = await fetchMarketHistory(marketData, timeframe);
+        applyDataToChart(marketData, history, timeframe);
+        window.chart.chartMode = chartMode; // Preserve current mode during switch
 
-    // Fallback if stock search fails completely
-    if (!stock) {
-        console.warn(`Stock ID ${stock_id} not found, falling back to BTCUSDT`);
-        const fallbackRes = await findStockByTicker('BTCUSDT');
-        stock = fallbackRes?.data || { ticker: 'BTCUSDT', _id: BTC_ID, name: 'Bitcoin' };
-    }
+        // 5. Restore Session State (Indicators, Drawings, etc)
+        if (activeLayout && !skipLayoutRestore) {
+            // A. ALWAYS restore Drawing Tools for the new symbol
+            await restoreDrawingTools(activeLayout.id, marketData.symbol, marketData.exchange, marketData.id);
 
-    // --- 3. Safety Check if Layout doesn't exist ---
-    if (!activeLayout) {
-        activeLayout = await saveLayout({
-            name: 'Default Workspace',
-            userId: "1",
-            lastSymbol: stock?.ticker || 'BTCUSDT',
-            lastTickerId: stock?._id || BTC_ID
-        });
-        layouts.unshift(activeLayout);
-    }
+            // B. ONLY restore Indicators and general Layout state if it's the FIRST load
+            if (isInitialLoad) {
+                if (activeLayout.id) {
+                    touchLayout(activeLayout.id).catch(() => { });
+                    window.chart.currentLayoutId = activeLayout.id;
+                }
 
-    if (window.chart.symbol && window.chart.symbol !== stock.ticker) {
-        // Unsubscribe from old symbol if it's not a default watchlist item
-        if (!DEFAULT_WATCHLIST_SYMBOLS.some(s => s.ticker === window.chart.symbol)) {
-            window.chart.unsubscribe(window.chart.symbol);
+                window.dispatchEvent(new CustomEvent('layout-changed', { detail: { name: activeLayout.name } }));
+
+                if (activeLayout.chartState && window.chart) {
+                    window.chart.applyChartState(activeLayout.chartState);
+                    const mode = window.chart.chartMode;
+                    if (window.updateChartModeUI) window.updateChartModeUI(mode);
+                    if (window.chartSettingsController) window.chartSettingsController.syncInputsWithChart();
+                }
+
+                if (window.chart.clearIndicators) window.chart.clearIndicators();
+                await restoreIndicators(activeLayout.indicators);
+            }
         }
-        for (let key in candleCache) delete candleCache[key];
+    } catch (error) {
+        console.error('[DataService] Critical error during initMarketSession:', error);
+    } finally {
+        // Only reset isRestoring if we are NOT in a skipDirty (undo/redo) flow.
+        // If we ARE in undo/redo, the restoreState method will handle resetting it.
+        if (!skipDirty) {
+            window.chart.isRestoring = false;
+        }
+        // Ensure a fallback marketData object exists for finalizeSessionLoad if everything crashed
+        const fallbackData = forcedMarket || { symbol: window.chart?.symbol || 'BTCUSDT' };
+        finalizeSessionLoad(fallbackData, skipDirty);
+    }
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * HELPER LOGIC (Private)
+ * --------------------------------------------------------------------------
+ */
+
+function resolveActiveLayout(layouts, requestedId) {
+    if (!layouts || layouts.length === 0) return null;
+    if (requestedId) return layouts.find(l => l.id === requestedId) || layouts[0];
+    if (window.chart?.currentLayoutId) return layouts.find(l => l.id === window.chart.currentLayoutId) || layouts[0];
+    return layouts[0];
+}
+
+function determineTargetSymbol(layout, forced) {
+    const searchInput = document.getElementById('stock-search');
+    const fallback = DEFAULT_WATCHLIST_SYMBOLS[0] || { symbol: 'BTCUSDT', exchange: 'BINANCE' };
+
+    let symbol, exchange, originalSymbol;
+
+    if (forced) {
+        symbol = forced.symbol;
+        exchange = forced.exchange || forced.primary_exchange;
+        originalSymbol = forced.original_symbol;
+    } else if (searchInput?.dataset.symbol) {
+        symbol = searchInput.dataset.symbol;
+        exchange = searchInput.dataset.exchange;
+        originalSymbol = searchInput.dataset.originalSymbol;
+        forced = {
+            symbol,
+            exchange,
+            original_symbol: originalSymbol,
+            market: searchInput.dataset.market,
+            type: searchInput.dataset.type
+        };
+        clearSearchDataset(searchInput);
+    } else if (layout?.lastSymbol) {
+        symbol = layout.lastSymbol;
+        exchange = layout.lastExchange;
+    } else {
+        symbol = window.chart?.symbol || fallback.symbol;
+        exchange = window.chart?.exchange || fallback.exchange;
+    }
+
+    return {
+        symbol: symbol || 'BTCUSDT',
+        exchange: (exchange || 'BINANCE').toUpperCase(),
+        originalSymbol: originalSymbol || symbol,
+        market: forced?.market,
+        type: forced?.type
+    };
+}
+
+async function resolveMarketMetadata(symbol, exchange, originalSymbol, forcedMarket, forcedType) {
+    const response = await findStockByTicker(symbol, exchange);
+    const data = response?.data;
+    return {
+        symbol: data?.symbol || symbol,
+        exchange: exchange,
+        name: data?.name || symbol,
+        market: forcedMarket || data?.market || 'crypto',
+        type: forcedType || data?.type || (symbol.endsWith('.P') ? 'perpetual' : 'spot'),
+        base: data?.base || '',
+        quote: data?.quote || '',
+        original_symbol: data?.originalSymbol || originalSymbol,
+        id: data?.id,
+        tickSize: data?.tickSize || 0
+    };
+}
+
+function resolveTimeframe(layout) {
+    let tf = '1d';
+    if (layout?.chartState?.timeframe) tf = layout.chartState.timeframe;
+    if (window.setTfActive) window.setTfActive(tf);
+    return tf;
+}
+
+function prepareChartForSwitch(marketData) {
+    const isNew = window.chart.symbol !== marketData.symbol ||
+        window.chart.exchange !== marketData.exchange ||
+        window.chart.market !== marketData.market ||
+        window.chart.type !== marketData.type;
+    if (isNew && window.chart.symbol) {
+        window.chart.unsubscribe(window.chart.symbol, window.chart.exchange);
         window.chart.clearSymbol();
         window.chart.render();
     }
+}
 
-    // --- 3. Market-Based Timeframe Adjustment ---
-    updateTimeframeOptions(stock.market);
-    if ((stock.market === 'stocks' || stock.market === 'commodities') && timeframe.endsWith('s')) {
-        timeframe = '1m';
-        // Sync UI + Top Bar Label
-        if (window.setTfActive) window.setTfActive(timeframe);
+function applyDataToChart(marketData, history, timeframe) {
+    const candles = history.candles || [];
+
+    window.chart.symbol = marketData.symbol;
+    window.chart.name = marketData.name;
+    window.chart.exchange = marketData.exchange;
+    window.chart.type = marketData.type;
+    window.chart.market = marketData.market;
+    window.chart.base = marketData.base;
+    window.chart.quote = marketData.quote;
+    window.chart.original_symbol = marketData.original_symbol;
+    window.chart.symbolId = marketData.id;
+    window.chart.tickSize = marketData.tickSize || 0;
+    window.chart.rawData = candles;
+    if (window.chart._indicatorCalcDebounce !== undefined) {
+        window.chart._indicatorCalcDebounce = false; // Disable debounce for major reload
     }
+    window.chart.setTimeframe(timeframe, true); // Force processing for new rawData
 
-    const data = await fetchStockData(stock, timeframe);
+    window.chart.marketStatus = history.meta?.marketStatus || 'REGULAR';
+    window.chart.connectWebSocket();
+}
 
-    if (data.length > 0) {
-        candleCache[stock.ticker + '_' + timeframe] = data;
-        await window.chart.syncWithDatabase();
-
-        window.chart.symbol = stock.ticker;
-        window.chart.instrument = stock.name;
-        window.chart.currency = stock.currency_symbol ?? (stock.currency_name ? stock.currency_name.toUpperCase() : '');
-        window.chart.exchange = stock.primary_exchange;
-        window.chart.market = stock.market;
-
-        window.chart.rawData = data;
-
-        // Apply chart mode early to avoid flicker (fallback to candle if missing)
-        window.chart.chartMode = activeLayout.chartState?.chartMode || 'candle';
-
-        window.chart.currentStockId = stock_id;
-        window.chart.drawingTools = [];
-        window.chart.selectedTool = null;
-
-        // Sync with sidebar UI
-        if (window.sidebarController) {
-            window.sidebarController.currentLayouts = layouts;
-        }
-
-        // --- Data Loading ---
-        window.chart.setTimeframe(timeframe);
-        window.chart.connectWebSocket(stock, DEFAULT_WATCHLIST_SYMBOLS);
-        window.chart.currentStockId = stock._id;
-
-        await touchLayout(activeLayout._id);
-        window.chart.currentLayoutId = activeLayout._id;
-        window.chart.tickerId = stock._id; // New: Pass stock DB ID for drawing persistence
-
-        // Emit layout change for top bar UI
-        window.dispatchEvent(new CustomEvent('layout-changed', { detail: { name: activeLayout.name } }));
-
-        // Load drawings for THIS layout AND THIS symbol/ticker
-        const result = await getDrawingTools({
-            layoutId: activeLayout._id,
-            symbol: stock.ticker
-        });
-        if (result && result.data) {
-            result.data.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-            for (const d of result.data) {
-                const tool = window.chart.createDrawingTool(d.toolType, d.points, d.style);
-                if (tool) {
-                    tool.requiredPoints = d.points.length;
-                    tool.id = d._id;
-                    tool.isHidden = !!d.isHidden;
-                    tool.isLocked = !!d.isLocked;
-                    if (d.name) tool.name = d.name;
-                    window.chart.drawingTools.push(tool);
-                }
-            }
-        }
-
-        // Apply Indicators from Layout
-        if (activeLayout.indicators && activeLayout.indicators.length > 0) {
-            if (window.chart && activeLayout.indicators) {
-                activeLayout.indicators.forEach(ind => {
-                    const doc = ind.indicatorId; // This is populated
-                    if (doc && ind.isVisible !== false) {
-                        const script = doc.script || '';
-                        window.chart.addIndicator(doc.name, script, {
-                            ...ind.settings,
-                            indicatorId: doc._id,
-                            isVisible: ind.isVisible
-                        });
-                    }
-                });
-            }
-        }
-
-        // [CHART STATE RESTORATION] - Restore zoom, scroll, etc.
-        if (window.chart && activeLayout.chartState) {
-            window.chart.applyChartState(activeLayout.chartState);
-
-            // Sync UI Timeframe and Chart Mode
-            if (activeLayout.chartState.timeframe && window.setTfActive) {
-                window.setTfActive(activeLayout.chartState.timeframe);
-            }
-            if (activeLayout.chartState.chartMode && window.setChartModeActive) {
-                window.setChartModeActive(activeLayout.chartState.chartMode);
-            }
-        }
-        window.chart.render();
-        if (window.setSearchTicker && window.chart.symbol) {
-            window.setSearchTicker(window.chart.symbol);
-        }
-        if (window.dispatchEvent) {
-            window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
-        }
-        if (window.chart) window.chart.isLoading = false;
+function finalizeSessionLoad(marketData, skipDirty = false) {
+    if (window.setSearchTicker) window.setSearchTicker(marketData.symbol);
+    window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
+    window.chart.isLoading = false;
+    window.chart.render(true); // Forced sync render to eliminate frame lag
+    // window.chart.clearDirtyState(); // REMOVED: Do not clear unsaved drawings during symbol switch!
+    // window.chart.clearHistory(); // DISABLED: Keep history across symbols for Undo/Redo
+    if (!skipDirty) {
+        window.chart.isLayoutDirty = true;
+        if (window.chart._notifyDirtyChange) window.chart._notifyDirtyChange();
     }
 }
+
+/**
+ * --------------------------------------------------------------------------
+ * UTILITIES & RE-EXPORTS
+ * --------------------------------------------------------------------------
+ */
 
 export async function saveCurrentLayout() {
-    if (!window.chart?.currentLayoutId) return;
-
+    if (!window.chart?.currentLayoutId || window.chart.isRestoring) return;
     try {
-        const layouts = await getLayouts();
-        const activeLayout = layouts.find(l => l._id === window.chart.currentLayoutId);
-        if (!activeLayout) return;
-
-        const chartState = window.chart.getChartState();
-
-        // --- 1. Merge timeframe-specific state ---
-        const currentTf = window.chart.timeframe;
-        const oldChartState = activeLayout.chartState || {};
-        const oldTimeframeStates = oldChartState.timeframeStates || {};
-
-        // Construct a CLEAN but COMPLETE chart state
-        activeLayout.chartState = {
-            ...oldChartState, // Preserve existing global fields (like paneProportions)
-            timeframe: chartState.timeframe,
-            chartMode: chartState.chartMode,
-            modeConfigs: chartState.modeConfigs || oldChartState.modeConfigs,
-            paneProportions: chartState.paneProportions || oldChartState.paneProportions,
-            timeframeStates: {
-                ...oldTimeframeStates
-            }
-        };
-
-        // Update the state for the ACTIVE timeframe
-        if (chartState.currentTimeframeState) {
-            activeLayout.chartState.timeframeStates[currentTf] = chartState.currentTimeframeState;
+        // Best Practice: First sync all drawings (pending actions) across all symbols 
+        // to ensure we don't lose any unsaved drawings from previous symbols.
+        if (window.chart.syncWithDatabase) {
+            await window.chart.syncWithDatabase();
         }
 
-        const indicators = (window.chart.indicators || []).map(ind => ({
-            indicatorId: ind.indicatorId || ind.id,
-            isVisible: ind.isVisible !== false,
-            settings: {
-                position: ind.position,
-                collapsed: ind.collapsed,
-                ...(ind.settings || {})
-            }
-        }));
-
+        const fullState = window.chart.getChartState();
         await updateLayout(window.chart.currentLayoutId, {
-            chartState: activeLayout.chartState,
-            indicators,
+            chartState: fullState,
             lastSymbol: window.chart.symbol,
-            lastTickerId: window.chart.tickerId
+            lastExchange: window.chart.exchange,
+            lastSymbolId: window.chart.symbolId,
+            indicators: (window.chart.indicators || []).map(ind => ({
+                indicatorId: ind.indicatorId || (ind.id?.startsWith('ind_') ? null : ind.id),
+                settings: {
+                    ...(ind.settings || {}),
+                    collapsed: !!ind.collapsed,
+                    position: ind.position || 'below',
+                    orderIndex: window.chart.paneOrder ? window.chart.paneOrder.indexOf(ind.id) : -1,
+                    paneShare: window.chart.paneProportions[ind.id] || 0.25
+                }
+            }))
         });
-        console.log(`Layout saved successfully (Timeframe: ${currentTf})`);
-    } catch (error) {
-        console.error('Failed to save layout:', error);
+        if (window.chart.clearDirtyState) {
+            window.chart.clearDirtyState();
+        }
+        console.log('[LayoutSave] Success, drawings synced and dirty state cleared.');
+    } catch (e) {
+        console.error('[LayoutSave] Failed:', e);
     }
 }
+export async function changeTimeframe(timeframe, value = null, unit = null, skipDirty = false) {
+    if (!window.chart?.symbol) return;
+    if (window.setTfActive) window.setTfActive(timeframe);
 
-export async function handleTimeframeChange(timeframe) {
-    if (!window.chart) return;
+    // Persist structured state
+    window.chart.tfValue = value;
+    window.chart.tfUnit = unit;
+
     window.chart.isLoading = true;
-    if (window.chart) {
-        window.setTfActive(timeframe);
-        window.setChartModeActive(window.chart.chartMode || 'candle');
-    }
+    const history = await fetchMarketHistory(window.chart, timeframe, null, value, unit);
+    window.chart.rawData = history.candles || [];
+    window.chart.marketStatus = history.meta?.marketStatus || 'REGULAR';
+    if (history.meta?.tickSize) window.chart.tickSize = history.meta.tickSize;
+    window.chart.setTimeframe(timeframe);
 
-    const searchInput = document.getElementById('stock-search');
-    const stockId = window.chart.currentStockId || (searchInput && searchInput.dataset.stockId);
-    const ticker = window.chart.symbol;
-
-    if (!stockId || !ticker) {
-        window.chart.setTimeframe(timeframe);
-        window.chart.isLoading = false;
-        return;
-    }
-
-    const cacheKey = ticker + '_' + timeframe;
-
-    // 1. Save current view BEFORE switching timeframe
-    await saveCurrentLayout();
-
-    const layouts = await getLayouts();
-    const activeLayout = layouts.find(l => l._id === window.chart.currentLayoutId);
-
-    if (candleCache[cacheKey]) {
-        window.chart.rawData = candleCache[cacheKey];
-        window.chart.setTimeframe(timeframe);
-
-        // 2. Restore state for the NEW timeframe
-        if (activeLayout && activeLayout.chartState) {
-            window.chart.applyChartState(activeLayout.chartState);
-            if (activeLayout.chartState.chartMode && window.setChartModeActive) {
-                window.setChartModeActive(activeLayout.chartState.chartMode);
-            }
-        }
-
-        window.chart.render();
-        if (window.setSearchTicker && window.chart.symbol) {
-            window.setSearchTicker(window.chart.symbol);
-        }
-        if (window.dispatchEvent) {
-            window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
-        }
-        window.chart.isLoading = false;
-        return;
-    }
-
-    const data = await fetchStockData({ ticker, market: window.chart.market }, timeframe);
-    if (data && data.length > 0) {
-        candleCache[cacheKey] = data;
-        window.chart.rawData = data;
-        window.chart.setTimeframe(timeframe);
-
-        // 2. Restore state for the NEW timeframe
-        if (activeLayout && activeLayout.chartState) {
-            window.chart.applyChartState(activeLayout.chartState);
-            if (activeLayout.chartState.chartMode && window.setChartModeActive) {
-                window.setChartModeActive(activeLayout.chartState.chartMode);
-            }
-        }
-
-        window.chart.render();
-        if (window.setSearchTicker && window.chart.symbol) {
-            window.setSearchTicker(window.chart.symbol);
-        }
-        if (window.dispatchEvent) {
-            window.dispatchEvent(new CustomEvent('chartify:data-loaded', { detail: { chart: window.chart } }));
-        }
-        window.chart.isLoading = false;
+    if (window.chart.rawData.length > 0 && window.chart.fullFit) window.chart.fullFit();
+    window.chart.isLoading = false;
+    window.chart.render();
+    if (!skipDirty) {
+        window.chart.isLayoutDirty = true;
+        if (window.chart._notifyDirtyChange) window.chart._notifyDirtyChange();
     }
 }
 
-export async function setDateRangeAndInterval(rangeLabel, defaultTimeframe, btnElement) {
-    document.querySelectorAll('.date-ranges button').forEach(btn => btn.classList.remove('active'));
-    if (btnElement) btnElement.classList.add('active');
+async function restoreDrawingTools(layoutId, symbol, exchange, symbolId) {
+    if (!layoutId || !window.chart) return;
+    const result = await getDrawingTools({ layoutId, symbol, exchange, symbolId });
+    if (!result?.data) return;
 
-    if (window.setTfActive) window.setTfActive(defaultTimeframe);
+    const mainPane = window.chart.panes.find(p => p.id === 'main');
+    const targetSymbol = (symbol || '').toUpperCase();
+    const targetExchange = (exchange || '').toUpperCase();
+    
+    // Best Practice: Multi-symbol persistence.
+    // 1. Filter out only the tools that belong to the TARGET context AND are NOT dirty (saved).
+    // This preserves:
+    // - Unsaved drawings for the current symbol.
+    // - All drawings (saved or unsaved) for other symbols.
+    window.chart.drawingTools = window.chart.drawingTools.filter(t => {
+        const toolIdStr = t.id ? t.id.toString() : null;
+        
+        // Priority 1: Keep if it's a local drawing (no DB ID yet) OR in unsaved states
+        const isLocal = !t.id || (typeof t.id === 'string' && t.id.startsWith('local_'));
+        if (isLocal || (toolIdStr && (window.chart.pendingActions.has(toolIdStr) || window.chart.inFlightSync.has(toolIdStr) || (window.chart.deferredUpdates && window.chart.deferredUpdates.has(toolIdStr))))) {
+            return true;
+        }
 
-    await loadStockData();
+        // Priority 2: Keep if it belongs to a DIFFERENT symbol/exchange
+        const tSymbol = (t.symbol || '').toUpperCase();
+        const tExchange = (t.exchange || '').toUpperCase();
+        const isSameContext = (tSymbol === targetSymbol) && 
+                             (tExchange === targetExchange) && 
+                             (t.symbolId === symbolId || !t.symbolId || !symbolId);
 
-    if (window.chart) {
-        let chartRange = rangeLabel.toLowerCase();
-        window.chart.setDateRange(chartRange === 'all' ? 'all' : chartRange);
+        return !isSameContext;
+    });
+
+    // 2. Add tools from database that are NOT already in pendingActions (to avoid overwrite)
+    result.data.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0)).forEach(d => {
+        const dbIdStr = d.id ? d.id.toString() : null;
+        if (dbIdStr && (window.chart.pendingActions.has(dbIdStr) || window.chart.inFlightSync.has(dbIdStr) || (window.chart.deferredUpdates && window.chart.deferredUpdates.has(dbIdStr)))) return;
+
+        const tool = window.chart.createDrawingTool(d.toolType, d.points, d.style, d.id);
+        if (tool) {
+            Object.assign(tool, { 
+                pane: mainPane, 
+                isHidden: !!d.isHidden, 
+                isLocked: !!d.isLocked,
+                symbol: d.symbol || symbol,
+                exchange: d.exchange || exchange,
+                symbolId: d.symbolId || symbolId
+            });
+            window.chart.drawingTools.push(tool);
+        }
+    });
+}
+
+async function restoreIndicators(indicators) {
+    if (!indicators?.length) return;
+    window.chart.isRestoring = true;
+
+    // Sort by orderIndex to preserve sequence during restoration
+    const sortedIndicators = [...indicators].sort((a, b) => {
+        const orderA = a.settings?.orderIndex ?? 999;
+        const orderB = b.settings?.orderIndex ?? 999;
+        return orderA - orderB;
+    });
+
+    sortedIndicators.forEach(ind => {
+        if (ind.indicator) {
+            window.chart.addIndicator(ind.indicator.name, ind.indicator.script || '', {
+                ...ind.settings,
+                indicatorId: ind.indicator.id
+            }, true);
+        }
+    });
+    // Note: isRestoring is now managed by initMarketSession for better coverage
+    if (window.chart.calculateIndicators) {
+        window.chart.indicatorsDirty = true;
+        window.chart.calculateIndicators(false);
     }
 }
 
-export function updateTimeframeOptions(market) {
+export function updateMarketUI(market, exchange) {
+    const isCrypto = market === 'crypto' || !market;
+
+    // Toggle seconds visibility based on market type
+    const secondsDisplay = isCrypto ? 'grid' : 'none';
+    const secondsLabelDisplay = isCrypto ? 'block' : 'none';
+
     const secondsLabel = document.getElementById('tf-seconds-label');
     const secondsGroup = document.getElementById('tf-seconds-group');
 
-    if (secondsLabel && secondsGroup) {
-        if (market === 'stocks' || market === 'commodities') {
-            secondsLabel.style.display = 'none';
-            secondsGroup.style.display = 'none';
-        } else {
-            secondsLabel.style.display = 'block';
-            secondsGroup.style.display = 'grid';
-        }
-    }
+    if (secondsLabel) secondsLabel.style.display = secondsLabelDisplay;
+    if (secondsGroup) secondsGroup.style.display = secondsDisplay;
+
+    // Reset all options to their default flex display
+    document.querySelectorAll('.tf-option').forEach(el => {
+        el.style.display = 'flex';
+    });
+}
+
+
+
+function clearSearchDataset(el) {
+    delete el.dataset.symbol;
+    delete el.dataset.exchange;
+    delete el.dataset.originalSymbol;
 }

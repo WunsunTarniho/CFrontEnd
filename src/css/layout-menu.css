@@ -1,4 +1,3 @@
-
 /* Layout Selector Styles */
 .layout-selector-container {
     position: relative;
@@ -9,7 +8,7 @@
 
 .layout-selector-btn {
     background: transparent;
-    border: 1px solid #363a45;
+    border: 1px solid #333333;
     border-radius: 4px;
     color: #d1d4dc;
     padding: 4px 10px;
@@ -24,12 +23,12 @@
 }
 
 .layout-selector-btn:hover {
-    background-color: #2a2e39;
-    border-color: #434651;
+    background-color: #262626;
+    border-color: #404040;
 }
 
 .layout-selector-btn.active {
-    background-color: #2a2e39;
+    background-color: #262626;
     border-color: #2962ff;
     color: #2962ff;
 }
@@ -38,12 +37,12 @@
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
-    width: 240px;
-    background-color: #1e222d;
-    border: 1px solid #363a45;
+    width: 260px;
+    background-color: #16161a;
+    border: 1px solid #333333;
     border-radius: 6px;
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
-    z-index: 2000;
+    z-index: 4000;
     display: none;
     padding: 6px 0;
 }
@@ -59,7 +58,7 @@
 }
 
 .layout-dropdown-item {
-    padding: 8px 16px;
+    padding: 10px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -70,12 +69,15 @@
 }
 
 .layout-dropdown-item:hover {
-    background-color: #2a2e39;
+    background-color: #262626;
+    color: #ffffff;
 }
 
 .layout-dropdown-item svg {
     margin-right: 12px;
     opacity: 0.7;
+    width: 16px;
+    height: 16px;
 }
 
 .layout-dropdown-item .item-label {
@@ -87,15 +89,20 @@
     font-size: 11px;
 }
 
+.layout-dropdown-item.active {
+    color: #2962ff;
+    font-weight: 600;
+}
+
 .layout-dropdown-divider {
     height: 1px;
-    background-color: #363a45;
+    background-color: #333333;
     margin: 6px 0;
 }
 
-/* Specific item styles based on the image */
+/* Specific item styles */
 .layout-dropdown-item.disabled {
-    color: #434651;
+    color: #404040;
     cursor: default;
 }
 
@@ -107,7 +114,7 @@
     background: transparent;
 }
 
-/* Toggle Switch Styling */
+/* Premium Toggle Switch Styling */
 .switch {
   position: relative;
   display: inline-block;
@@ -128,8 +135,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #363a45;
-  transition: .4s;
+  background-color: #333333;
+  transition: .2s;
   border-radius: 18px;
 }
 
@@ -141,7 +148,7 @@
   left: 2px;
   bottom: 2px;
   background-color: white;
-  transition: .4s;
+  transition: .2s;
   border-radius: 50%;
 }
 

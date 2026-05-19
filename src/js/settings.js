@@ -1,3 +1,4 @@
+import { AdvancedLineSetting } from './components/AdvancedLineSetting.js';
 export class ToolSettingsController {
     constructor(chart) {
         this.chart = chart;
@@ -30,6 +31,28 @@ export class ToolSettingsController {
         if (key === 'dotted') return [2, 2];
         return [];
     }
+
+    _syncAdvancedLine(id, value, options = {}) {
+        if (!this.advancedComps) this.advancedComps = {};
+        
+        const container = document.getElementById(id);
+        if (!container) return;
+
+        if (!this.advancedComps[id]) {
+            this.advancedComps[id] = new AdvancedLineSetting(id, {
+                ...options,
+                onChange: (val) => {
+                    if (options.onUpdate) options.onUpdate(val);
+                    this.updatePreview();
+                }
+            });
+        } else {
+            // Update options in case they changed (e.g. switching between regular line and highlighter)
+            this.advancedComps[id].updateOptions(options);
+        }
+        
+        this.advancedComps[id].setValue(value);
+    }
     _hexFromColor(color) {
         // Accept rgba/rgb or hex; return best hex approximation
         if (!color || typeof color !== 'string') return '#2962FF';
@@ -37,6 +60,12 @@ export class ToolSettingsController {
         const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
         if (m) return '#' + [m[1], m[2], m[3]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
         return '#2962FF';
+    }
+
+    _rgbaToHex(color, opacity) {
+        const hex = this._hexFromColor(color);
+        const alpha = Math.round(opacity * 255).toString(16).padStart(2, '0');
+        return hex + alpha;
     }
 
     _syncCustomWidthPicker(idOrEl, width, color) {
@@ -145,11 +174,10 @@ export class ToolSettingsController {
 
     makePitchforkLevelRow(lvlObj, idx, onVisibility, onColor, onWidth) {
         const row = document.createElement('div');
-        row.className = 'settings-row'; row.style.margin = '0'; row.style.gap = '4px'; row.style.alignItems = 'center';
-
+        row.className = 'settings-row';
         row.innerHTML = `
-                    <input type="checkbox" id="pf-lvl-vis-${idx}" ${lvlObj.visibility !== false ? 'checked' : ''} style="margin:0;">
-                    <div style="font-size:12px; color:#f0f3fa; flex:1; white-space:nowrap;">${lvlObj.level}</div>
+                    <input type="checkbox" id="pf-lvl-vis-${idx}" ${lvlObj.visibility !== false ? 'checked' : ''}>
+                    <div style="font-size: 12px; color: #d1d4dc; flex: 1; white-space: nowrap;">${lvlObj.level}</div>
                     <input type="color" id="pf-lvl-color-${idx}" class="settings-color-picker" value="${this._hexFromColor(lvlObj.color)}">
                     <div id="pf-lvl-width-picker-${idx}" class="custom-width-picker">
                         <div class="custom-width-picker-line" style="background-color: ${this._hexFromColor(lvlObj.color)}; height: ${lvlObj.width || 1}px;"></div>
@@ -365,32 +393,13 @@ export class ToolSettingsController {
         };
 
         // ── Line section ──
-        document.getElementById('line-color').oninput = (e) => {
-            this.tempStyle.color = e.target.value;
-            if (this.activeTool && this.activeTool.type === 'highlighter') {
-                this.tempStyle.highlighterColor = e.target.value;
-            }
-            this.updatePreview();
-        };
-        this._initCustomWidthPicker('line-width-picker', 'width', 'line-color');
-        const lineOp = document.getElementById('line-opacity');
-        const lineOpLabel = document.getElementById('line-opacity-label');
-        lineOp.oninput = (e) => {
-            this.tempStyle.opacity = +e.target.value / 100;
-            lineOpLabel.textContent = e.target.value + '%';
-            this.updatePreview();
-        };
+        // (Handled by AdvancedLineSetting)
+
 
         // ── Shape section ──
-        document.getElementById('shape-border-color').oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
-        this._initCustomWidthPicker('shape-border-width-picker', 'width', 'shape-border-color');
-        document.getElementById('shape-fill-color').oninput = (e) => {
-            this.tempStyle.fillColor = e.target.value;
-            this.updatePreview();
-        };
-        document.getElementById('shape-text-color').oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
-        document.getElementById('shape-font-size').onchange = (e) => { this.tempStyle.fontSize = e.target.value + 'px'; this.updatePreview(); };
-        document.getElementById('shape-text-content').oninput = (e) => { this.tempStyle.text = e.target.value; this.updatePreview(); };
+        // (Border handled by AdvancedLineSetting)
+        // Shape section handled by AdvancedLineSetting in syncUIToState
+
         document.getElementById('shape-text-bold').onclick = (e) => {
             e.currentTarget.classList.toggle('active');
             this.tempStyle.fontWeight = e.currentTarget.classList.contains('active') ? 'bold' : 'normal';
@@ -409,14 +418,8 @@ export class ToolSettingsController {
             };
         }
 
-        // Text section: apply both textColor and color for simple Text tools to ensure sync
-        document.getElementById('text-color').oninput = (e) => {
-            this.tempStyle.textColor = e.target.value;
-            this.updatePreview();
-        };
-        document.getElementById('text-font-size').onchange = (e) => { this.tempStyle.fontSize = e.target.value + 'px'; this.updatePreview(); };
-        document.getElementById('settings-text-content').oninput = (e) => { this.tempStyle.text = e.target.value; this.updatePreview(); };
-        document.getElementById('text-align').onchange = (e) => { this.tempStyle.textAlign = e.target.value; this.updatePreview(); };
+        // Text section handled by AdvancedLineSetting in syncUIToState
+
         document.getElementById('text-bold').onclick = (e) => {
             e.currentTarget.classList.toggle('active');
             this.tempStyle.fontWeight = e.currentTarget.classList.contains('active') ? 'bold' : 'normal';
@@ -427,8 +430,8 @@ export class ToolSettingsController {
             this.tempStyle.fontStyle = e.currentTarget.classList.contains('active') ? 'italic' : 'normal';
             this.updatePreview();
         };
-        document.getElementById('text-line-color').oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
-        this._initCustomWidthPicker('text-line-width-picker', 'width', 'text-line-color');
+        // (Handled by AdvancedLineSetting)
+
 
         // Grid
         const fibGridShow = document.getElementById('fib-grid-show');
@@ -451,15 +454,10 @@ export class ToolSettingsController {
 
         const fibBgShow = document.getElementById('fib-background-show');
         if (fibBgShow) fibBgShow.onchange = (e) => { this.tempStyle.backgroundShow = e.target.checked; this.updatePreview(); };
-        const fibBgColor = document.getElementById('fib-background-color');
-        if (fibBgColor) fibBgColor.oninput = (e) => { this.tempStyle.fillColor = e.target.value; this.updatePreview(); };
-        const fibOpacity = document.getElementById('fib-opacity');
-        if (fibOpacity) fibOpacity.oninput = (e) => {
-            const val = e.target.value / 100;
-            this.tempStyle.backgroundOpacity = val;
-            document.getElementById('fib-opacity-label').textContent = e.target.value + '%';
-            this.updatePreview();
-        };
+        // Fibonacci Background handled by AdvancedLineSetting in syncUIToState
+
+        // Fibonacci Background handled by AdvancedLineSetting in syncUIToState
+
         const fibReverse = document.getElementById('fib-reverse');
         if (fibReverse) fibReverse.onchange = (e) => { this.tempStyle.reverse = e.target.checked; this.updatePreview(); };
         const fibFontSize = document.getElementById('fib-font-size');
@@ -468,16 +466,12 @@ export class ToolSettingsController {
         // Trend Line
         const fibTrendShow = document.getElementById('fib-trendline-show');
         if (fibTrendShow) fibTrendShow.onchange = (e) => { this.tempStyle.trendLineShow = e.target.checked; this.updatePreview(); };
-        const fibTrendColor = document.getElementById('fib-trendline-color');
-        if (fibTrendColor) fibTrendColor.oninput = (e) => { this.tempStyle.trendLineColor = e.target.value; this.updatePreview(); };
-
-        const fibMainColor = document.getElementById('fib-main-color');
-        if (fibMainColor) fibMainColor.oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
+        
         const fibSpiralCCW = document.getElementById('fib-spiral-ccw');
         if (fibSpiralCCW) fibSpiralCCW.onchange = (e) => { this.tempStyle.counterClockwise = e.target.checked; this.updatePreview(); };
 
         // Levels Line
-        this._initCustomWidthPicker('fib-line-width-picker', 'width', 'fib-main-color');
+        this._initCustomWidthPicker('fib-line-width-picker', 'width', null); // Pass null if no specific color picker
         const fibLineDash = document.getElementById('fib-line-dash');
         if (fibLineDash) fibLineDash.onchange = (e) => { this.tempStyle.dash = this._keyToDash(e.target.value); this.updatePreview(); };
 
@@ -505,45 +499,23 @@ export class ToolSettingsController {
             };
         });
 
-        // Opacity & Background visibility
-        ['h', 'v'].forEach(axis => {
-            const showEl = document.getElementById(`gann-${axis}-background-show`);
-            if (showEl) showEl.onchange = (e) => {
-                this.tempStyle[`${axis === 'h' ? 'h' : 'v'}BackgroundShow`] = e.target.checked;
-                this.updatePreview();
-            };
-            const opEl = document.getElementById(`gann-${axis}-opacity`);
-            if (opEl) opEl.oninput = (e) => {
-                this.tempStyle[`${axis === 'h' ? 'h' : 'v'}BackgroundOpacity`] = +e.target.value / 100;
-                const label = document.getElementById(`gann-${axis}-opacity-label`);
-                if (label) label.textContent = e.target.value + '%';
-                this.updatePreview();
-            };
-        });
+        // Gann backgrounds handled by AdvancedLineSetting in syncUIToState
+
 
         const gannFontSize = document.getElementById('gann-font-size');
         if (gannFontSize) gannFontSize.oninput = (e) => { this.tempStyle.fontSize = +e.target.value; this.updatePreview(); };
 
         // ── Range section ──
-
-        const rangeLineColor = document.getElementById('range-line-color');
-        if (rangeLineColor) rangeLineColor.oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
-        this._initCustomWidthPicker('range-line-width-picker', 'width', 'range-line-color');
-        const rangeLineDash = document.getElementById('range-line-dash');
-        if (rangeLineDash) rangeLineDash.onchange = (e) => { this.tempStyle.dash = this._keyToDash(e.target.value); this.updatePreview(); };
+        // (Line settings handled by AdvancedLineSetting)
 
         const rangeFillColor = document.getElementById('range-fill-color');
         if (rangeFillColor) rangeFillColor.oninput = (e) => { this.tempStyle.fillColor = e.target.value; this.updatePreview(); };
-        const rangeBgOpacity = document.getElementById('range-background-opacity');
-        if (rangeBgOpacity) rangeBgOpacity.oninput = (e) => {
-            this.tempStyle.backgroundOpacity = +e.target.value / 100;
-            const label = document.getElementById('range-background-opacity-label');
-            if (label) label.textContent = e.target.value + '%';
-            this.updatePreview();
-        };
+        // Range background handled by AdvancedLineSetting in syncUIToState
 
+
+        // Price Range text handled by AdvancedLineSetting in syncUIToState
         const rangeTextColor = document.getElementById('range-text-color');
-        if (rangeTextColor) rangeTextColor.oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
+
         const rangeFontSize = document.getElementById('range-font-size');
         if (rangeFontSize) rangeFontSize.onchange = (e) => { this.tempStyle.fontSize = e.target.value; this.updatePreview(); };
 
@@ -752,35 +724,8 @@ export class ToolSettingsController {
             if (el) el.oninput = updatePosLevels;
         });
 
-        // Colors
-        const posTargetColor = document.getElementById('pos-target-color');
-        if (posTargetColor) posTargetColor.oninput = (e) => {
-            if (!this.tempStyle.fillColor) this.tempStyle.fillColor = JSON.parse(JSON.stringify(this.activeTool.style.fillColor || {}));
-            this.tempStyle.fillColor.profit = e.target.value;
-            this.updatePreview();
-        };
-        const posTargetOp = document.getElementById('pos-target-opacity');
-        if (posTargetOp) posTargetOp.oninput = (e) => {
-            this.tempStyle.targetOpacity = +e.target.value;
-            document.getElementById('pos-target-opacity-label').textContent = e.target.value + '%';
-            this.updatePreview();
-        };
+        // Colors handled by AdvancedLineSetting in syncUIToState
 
-        const posStopColor = document.getElementById('pos-stop-color');
-        if (posStopColor) posStopColor.oninput = (e) => {
-            if (!this.tempStyle.fillColor) this.tempStyle.fillColor = JSON.parse(JSON.stringify(this.activeTool.style.fillColor || {}));
-            this.tempStyle.fillColor.loss = e.target.value;
-            this.updatePreview();
-        };
-        const posStopOp = document.getElementById('pos-stop-opacity');
-        if (posStopOp) posStopOp.oninput = (e) => {
-            this.tempStyle.stopOpacity = +e.target.value;
-            document.getElementById('pos-stop-opacity-label').textContent = e.target.value + '%';
-            this.updatePreview();
-        };
-
-        const posTextColor = document.getElementById('pos-text-color');
-        if (posTextColor) posTextColor.oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
         const posFontSize = document.getElementById('pos-font-size');
         if (posFontSize) posFontSize.onchange = (e) => { this.tempStyle.fontSize = e.target.value; this.updatePreview(); };
 
@@ -800,11 +745,7 @@ export class ToolSettingsController {
         if (posAlwaysShow) posAlwaysShow.onchange = (e) => { this.tempStyle.alwaysShowStats = e.target.checked; this.updatePreview(); };
 
         // Forecast
-        const fcLineColor = document.getElementById('fc-line-color');
-        if (fcLineColor) fcLineColor.oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
-        this._initCustomWidthPicker('fc-line-width-picker', 'width', 'fc-line-color');
-        const fcLineDash = document.getElementById('fc-line-dash');
-        if (fcLineDash) fcLineDash.onchange = (e) => { this.tempStyle.dash = this._keyToDash(e.target.value); this.updatePreview(); };
+        // (Line settings handled by AdvancedLineSetting)
 
         const fcSourceText = document.getElementById('fc-source-text');
         if (fcSourceText) fcSourceText.oninput = (e) => { this.tempStyle.sourceTextColor = e.target.value; this.updatePreview(); };
@@ -830,9 +771,8 @@ export class ToolSettingsController {
         const fcFailureBg = document.getElementById('fc-failure-bg');
         if (fcFailureBg) fcFailureBg.oninput = (e) => { this.tempStyle.failureBgColor = e.target.value; this.updatePreview(); };
 
-        // Bars Pattern
-        const bpColor = document.getElementById('bp-color');
-        if (bpColor) bpColor.oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
+        // Bars Pattern handled by AdvancedLineSetting in syncUIToState
+
         const bpMode = document.getElementById('bp-mode');
         if (bpMode) bpMode.onchange = (e) => { this.tempStyle.mode = e.target.value; this.updatePreview(); };
         const bpMirrored = document.getElementById('bp-mirrored');
@@ -841,8 +781,8 @@ export class ToolSettingsController {
         if (bpFlipped) bpFlipped.onchange = (e) => { this.tempStyle.flipped = e.target.checked; this.updatePreview(); };
 
         // ── Chart Patterns section ──
-        const cpTextColor = document.getElementById('cp-text-color');
-        if (cpTextColor) cpTextColor.oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
+        // Chart Patterns handled by AdvancedLineSetting in syncUIToState
+
         const cpFontSize = document.getElementById('cp-font-size');
         if (cpFontSize) cpFontSize.onchange = (e) => { this.tempStyle.fontSize = e.target.value + 'px'; this.updatePreview(); };
         const cpBold = document.getElementById('cp-bold');
@@ -857,9 +797,7 @@ export class ToolSettingsController {
             this.tempStyle.fontStyle = e.currentTarget.classList.contains('active') ? 'italic' : 'normal';
             this.updatePreview();
         };
-        const cpBorderColor = document.getElementById('cp-border-color');
-        if (cpBorderColor) cpBorderColor.oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
-        this._initCustomWidthPicker('cp-border-width-picker', 'width', 'cp-border-color');
+        // (Border handled by AdvancedLineSetting)
         const cpBgShow = document.getElementById('cp-background-show');
         if (cpBgShow) cpBgShow.onchange = (e) => { this.tempStyle.backgroundShow = e.target.checked; this.updatePreview(); };
         const cpBgColor = document.getElementById('cp-background-color');
@@ -874,36 +812,17 @@ export class ToolSettingsController {
         };
 
         // ── Elliott Waves section ──
-        const ewColor = document.getElementById('ew-color');
-        if (ewColor) ewColor.oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
-        this._initCustomWidthPicker('ew-width-picker', 'width', 'ew-color');
-        const ewTextColor = document.getElementById('ew-text-color');
-        if (ewTextColor) ewTextColor.oninput = (e) => { this.tempStyle.textColor = e.target.value; this.updatePreview(); };
+        // Elliott Waves handled by AdvancedLineSetting in syncUIToState
+
 
         // ── Cycles section ──
-        const cyColor = document.getElementById('cy-color');
-        if (cyColor) cyColor.oninput = (e) => { this.tempStyle.color = e.target.value; this.updatePreview(); };
-        this._initCustomWidthPicker('cy-width-picker', 'width', 'cy-color');
+        // (Line handled by AdvancedLineSetting)
 
         // ── Pitchfork section ──
         const pfExtend = document.getElementById('pitchfork-extend');
         if (pfExtend) pfExtend.onchange = (e) => { this.tempStyle.extendLines = e.target.checked; this.updatePreview(); };
 
-        const pfMedianCol = document.getElementById('pitchfork-median-color');
-        if (pfMedianCol) pfMedianCol.oninput = (e) => {
-            if (!this.tempStyle.levels) this.tempStyle.levels = JSON.parse(JSON.stringify(this.activeTool.style.levels || []));
-            let median = this.tempStyle.levels.find(l => l.level === 0);
-            if (median) median.color = e.target.value;
-            else this.tempStyle.color = e.target.value;
-            this.updatePreview();
-        };
-        this._initCustomWidthPicker('pitchfork-median-width-picker', (w) => {
-            if (!this.tempStyle.levels) this.tempStyle.levels = JSON.parse(JSON.stringify(this.activeTool.style.levels || []));
-            let median = this.tempStyle.levels.find(l => l.level === 0);
-            if (median) median.width = w;
-            else this.tempStyle.width = w;
-            this.updatePreview();
-        }, pfMedianCol);
+        // (Median handled by AdvancedLineSetting)
 
         const pfBgShow = document.getElementById('pitchfork-background-show');
         if (pfBgShow) pfBgShow.onchange = (e) => { this.tempStyle.backgroundShow = e.target.checked; this.updatePreview(); };
@@ -988,7 +907,7 @@ export class ToolSettingsController {
         if (shapeTextStyleToggles) shapeTextStyleToggles.style.display = isNoFontStyleTool ? 'none' : '';
 
         // Hide Opacity for specific text tools (Except Table)
-        const NO_OPACITY_TOOLS = ['pin', 'sign-post', 'flag-mark', 'comment', 'callout', 'price-label'];
+        const NO_OPACITY_TOOLS = ['sign-post', 'flag-mark'];
         const isNoOpacityTool = NO_OPACITY_TOOLS.includes(this.activeTool.type);
         const shapeOpacity = document.getElementById('shape-opacity');
         const shapeOpacityLabel = document.getElementById('shape-opacity-label');
@@ -1157,18 +1076,40 @@ export class ToolSettingsController {
             // Style
             const fillProfit = s.fillColor?.profit || '#22AB94';
             const fillLoss = s.fillColor?.loss || '#F23645';
-            document.getElementById('pos-target-color').value = fillProfit;
-            document.getElementById('pos-stop-color').value = fillLoss;
+            const tOp = s.targetOpacity !== undefined ? s.targetOpacity : 0.2;
+            const sOp = s.stopOpacity !== undefined ? s.stopOpacity : 0.2;
 
-            const tOp = s.targetOpacity !== undefined ? s.targetOpacity : 30;
-            document.getElementById('pos-target-opacity').value = tOp;
-            document.getElementById('pos-target-opacity-label').textContent = tOp + '%';
+            this._syncAdvancedLine('pos-target-color-container', { hexAlpha: this._rgbaToHex(fillProfit, tOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    if (!this.tempStyle.fillColor) this.tempStyle.fillColor = JSON.parse(JSON.stringify(this.activeTool.style.fillColor || {}));
+                    this.tempStyle.fillColor.profit = val.color;
+                    this.tempStyle.targetOpacity = val.opacity;
+                }
+            });
 
-            const sOp = s.stopOpacity !== undefined ? s.stopOpacity : 30;
-            document.getElementById('pos-stop-opacity').value = sOp;
-            document.getElementById('pos-stop-opacity-label').textContent = sOp + '%';
+            this._syncAdvancedLine('pos-stop-color-container', { hexAlpha: this._rgbaToHex(fillLoss, sOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    if (!this.tempStyle.fillColor) this.tempStyle.fillColor = JSON.parse(JSON.stringify(this.activeTool.style.fillColor || {}));
+                    this.tempStyle.fillColor.loss = val.color;
+                    this.tempStyle.stopOpacity = val.opacity;
+                }
+            });
 
-            document.getElementById('pos-text-color').value = this._hexFromColor(s.textColor || '#ffffff');
+            this._syncAdvancedLine('pos-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || '#ffffff') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.textColor = val.color;
+                }
+            });
             document.getElementById('pos-font-size').value = parseInt(fSize);
 
             // Stats
@@ -1182,28 +1123,106 @@ export class ToolSettingsController {
             document.getElementById('pos-always-show').checked = s.alwaysShowStats !== false;
         }
 
+        if (category === 'gann-fan') {
+            const bgOp = s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2;
+            this._syncAdvancedLine('gann-fan-background-container', { hexAlpha: this._rgbaToHex(s.fillColor || s.color || '#2962FF', bgOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.fillColor = val.color;
+                    this.tempStyle.backgroundOpacity = val.opacity;
+                }
+            });
+            document.getElementById('gann-fan-background-show').checked = s.backgroundShow !== false;
+            document.getElementById('gann-fan-labels-show').checked = s.labelsShow !== false;
+        }
+
+        if (category === 'gann-box' || category === 'gann-square') {
+            ['h', 'v'].forEach(axis => {
+                const bgShow = s[axis + 'BackgroundShow'] !== false;
+                const bgOp = s[axis + 'BackgroundOpacity'] !== undefined ? s[axis + 'BackgroundOpacity'] : 0.2;
+                const bgCol = s[axis + 'BackgroundFillColor'] || s.color || '#2962FF';
+                
+                this._syncAdvancedLine(`gann-${axis}-background-container`, { hexAlpha: this._rgbaToHex(bgCol, bgOp) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    onUpdate: (val) => {
+                        this.tempStyle[axis + 'BackgroundFillColor'] = val.color;
+                        this.tempStyle[axis + 'BackgroundOpacity'] = val.opacity;
+                    }
+                });
+                const showEl = document.getElementById(`gann-${axis}-background-show`);
+                if (showEl) showEl.checked = bgShow;
+            });
+
+            // Specific background for Gann Square if it exists (some versions use shared h/v, some have a global one)
+            const sqBgCont = document.getElementById('gann-square-background-container');
+            if (sqBgCont) {
+                const bgOp = s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2;
+                this._syncAdvancedLine('gann-square-background-container', { hexAlpha: this._rgbaToHex(s.fillColor || s.color || '#2962FF', bgOp) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.fillColor = val.color;
+                        this.tempStyle.backgroundOpacity = val.opacity;
+                    }
+                });
+                const sqShowEl = document.getElementById('gann-square-background-show');
+                if (sqShowEl) sqShowEl.checked = s.backgroundShow !== false;
+            }
+        }
         if (category === 'forecast') {
-            document.getElementById('fc-line-color').value = this._hexFromColor(s.color || '#2962FF');
-            this._syncCustomWidthPicker('fc-line-width-picker', s.width || 1, s.color || '#2962FF');
-            document.getElementById('fc-line-dash').value = this._dashToKey(s.dash || []);
+            this._syncAdvancedLine('fc-line-advanced', {
+                hexAlpha: s.color || '#2962FF',
+                thickness: s.width || 1,
+                style: this._dashToKey(s.dash || [])
+            }, {
+                onUpdate: (val) => {
+                    this.tempStyle.color = val.hexAlpha;
+                    this.tempStyle.width = val.thickness;
+                    this.tempStyle.dash = this._keyToDash(val.style);
+                }
+            });
 
-            document.getElementById('fc-source-text').value = this._hexFromColor(s.sourceTextColor || '#ffffff');
-            document.getElementById('fc-source-bg').value = this._hexFromColor(s.sourceBgColor || '#2962FF');
-            document.getElementById('fc-source-border').value = this._hexFromColor(s.sourceBorderColor || '#2962FF');
+            const fcStates = [
+                { id: 'fc-source-text', prop: 'sourceTextColor', def: '#ffffff' },
+                { id: 'fc-source-bg', prop: 'sourceBgColor', def: '#2962FF' },
+                { id: 'fc-source-border', prop: 'sourceBorderColor', def: '#2962FF' },
+                { id: 'fc-target-text', prop: 'targetTextColor', def: '#ffffff' },
+                { id: 'fc-target-bg', prop: 'targetBgColor', def: '#2962FF' },
+                { id: 'fc-target-border', prop: 'targetBorderColor', def: '#2962FF' },
+                { id: 'fc-success-text', prop: 'successTextColor', def: '#ffffff' },
+                { id: 'fc-success-bg', prop: 'successBgColor', def: '#22AB94' },
+                { id: 'fc-failure-text', prop: 'failureTextColor', def: '#ffffff' },
+                { id: 'fc-failure-bg', prop: 'failureBgColor', def: '#F23645' }
+            ];
 
-            document.getElementById('fc-target-text').value = this._hexFromColor(s.targetTextColor || '#ffffff');
-            document.getElementById('fc-target-bg').value = this._hexFromColor(s.targetBgColor || '#2962FF');
-            document.getElementById('fc-target-border').value = this._hexFromColor(s.targetBorderColor || '#2962FF');
-
-            document.getElementById('fc-success-text').value = this._hexFromColor(s.successTextColor || '#ffffff');
-            document.getElementById('fc-success-bg').value = this._hexFromColor(s.successBgColor || '#22AB94');
-
-            document.getElementById('fc-failure-text').value = this._hexFromColor(s.failureTextColor || '#ffffff');
-            document.getElementById('fc-failure-bg').value = this._hexFromColor(s.failureBgColor || '#F23645');
+            fcStates.forEach(state => {
+                this._syncAdvancedLine(state.id + '-container', { hexAlpha: this._hexFromColor(s[state.prop] || state.def) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    showOpacity: false,
+                    onUpdate: (val) => {
+                        this.tempStyle[state.prop] = val.color;
+                    }
+                });
+            });
         }
 
         if (category === 'bars-pattern') {
-            document.getElementById('bp-color').value = this._hexFromColor(s.color || '#2962FF');
+            this._syncAdvancedLine('bp-color-container', { hexAlpha: this._hexFromColor(s.color || '#2962FF') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.color = val.color;
+                }
+            });
             document.getElementById('bp-mode').value = s.mode || 'hl-bars';
             document.getElementById('bp-mirrored').checked = !!s.mirrored;
             document.getElementById('bp-flipped').checked = !!s.flipped;
@@ -1214,30 +1233,66 @@ export class ToolSettingsController {
         if (titleSpan) titleSpan.textContent = s.name || this.activeTool.constructor.name.replace('Tool', '');
 
         if (category === 'line') {
-            if (this.activeTool && this.activeTool.type === 'highlighter') {
-                document.getElementById('line-color').value = this._hexFromColor(s.highlighterColor || s.color);
-                this._syncCustomWidthPicker('line-width-picker', Math.round((s.highlighterWidth || 20) / 5), s.highlighterColor || s.color);
+            const isHighlighter = this.activeTool && this.activeTool.type === 'highlighter';
+            const isArrowMarkup = this.activeTool && ['arrow-mark-up', 'arrow-mark-down', 'arrow-marker'].includes(this.activeTool.type);
 
-                const op = s.opacity !== undefined ? s.opacity : 0.5;
-                document.getElementById('line-opacity').value = Math.round(op * 100);
-                document.getElementById('line-opacity-label').textContent = Math.round(op * 100) + '%';
-            } else {
-                document.getElementById('line-color').value = this._hexFromColor(s.color);
-                this._syncCustomWidthPicker('line-width-picker', s.width || 1, s.color);
-            }
+            this._syncAdvancedLine('line-advanced', {
+                hexAlpha: isHighlighter ? (s.highlighterColor || s.color) : s.color,
+                thickness: isHighlighter ? Math.round((s.highlighterWidth || 20) / 5) : (s.width || 1),
+                style: this._dashToKey(s.dash || [])
+            }, {
+                showThickness: !isHighlighter && !isArrowMarkup,
+                showStyle: !isHighlighter && !isArrowMarkup,
+                showOpacity: isHighlighter || isArrowMarkup,
+                onUpdate: (val) => {
+                    if (isHighlighter) {
+                        this.tempStyle.highlighterColor = val.hexAlpha;
+                        this.tempStyle.highlighterWidth = val.thickness * 5;
+                    } else {
+                        this.tempStyle.color = val.hexAlpha;
+                        this.tempStyle.width = val.thickness;
+                    }
+                    this.tempStyle.dash = this._keyToDash(val.style);
+                }
+            });
         }
 
         if (category === 'range') {
-            document.getElementById('range-line-color').value = this._hexFromColor(s.color || '#2962FF');
-            this._syncCustomWidthPicker('range-line-width-picker', s.width || 1, s.color || '#2962FF');
+            this._syncAdvancedLine('range-line-advanced', {
+                hexAlpha: s.color || '#2962FF',
+                thickness: s.width || 1,
+                style: this._dashToKey(s.dash || [])
+            }, {
+                onUpdate: (val) => {
+                    this.tempStyle.color = val.hexAlpha;
+                    this.tempStyle.width = val.thickness;
+                    this.tempStyle.dash = this._keyToDash(val.style);
+                }
+            });
 
-            document.getElementById('range-fill-color').value = this._hexFromColor(s.fillColor || '#2962FF');
+            const fillCol = s.fillColor || '#2962FF';
             const bgOp = s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2;
-            document.getElementById('range-background-opacity').value = Math.round(bgOp * 100);
-            const bgOpLabel = document.getElementById('range-background-opacity-label');
-            if (bgOpLabel) bgOpLabel.textContent = Math.round(bgOp * 100) + '%';
 
-            document.getElementById('range-text-color').value = this._hexFromColor(s.textColor || '#ffffff');
+            this._syncAdvancedLine('range-fill-color-container', { hexAlpha: this._rgbaToHex(fillCol, bgOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.fillColor = val.color;
+                    this.tempStyle.backgroundOpacity = val.opacity;
+                }
+            });
+
+
+            this._syncAdvancedLine('range-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || '#ffffff') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.textColor = val.color;
+                }
+            });
             document.getElementById('range-label-bg-color').value = this._hexFromColor(s.labelBackgroundColor || '#2962FF');
 
             // Stats selection
@@ -1261,41 +1316,120 @@ export class ToolSettingsController {
 
         if (category === 'shape' || category === 'table') {
             const isNoBorderTool = ['pin', 'sign-post', 'flag-mark'].includes(this.activeTool.type);
-            if (isNoBorderTool) {
-                document.getElementById('shape-fill-color').value = this._hexFromColor(s.fillColor || s.color);
-            } else {
-                document.getElementById('shape-border-color').value = this._hexFromColor(s.color);
+            const fillColorEl = document.getElementById('shape-fill-color');
+            const opacityEl = document.getElementById('shape-opacity');
+            const opacityLabel = document.getElementById('shape-opacity-label');
+            const textColorEl = document.getElementById('shape-text-color');
+            const fontSizeEl = document.getElementById('shape-font-size');
+            const textContentEl = document.getElementById('shape-text-content');
+            const boldEl = document.getElementById('shape-text-bold');
+            const italicEl = document.getElementById('shape-text-italic');
+
+            if (!isNoBorderTool) {
+                this._syncAdvancedLine('shape-border-advanced', {
+                    hexAlpha: s.color || '#2962FF',
+                    thickness: s.width || 1
+                }, {
+                    showStyle: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.color = val.hexAlpha;
+                        this.tempStyle.width = val.thickness;
+                    }
+                });
+            }
+
+            const fillColorCont = document.getElementById('shape-fill-color-container');
+            if (fillColorCont) {
                 let defaultFill = undefined;
                 if (this.activeTool.type === 'table') defaultFill = '#131722';
-                document.getElementById('shape-fill-color').value = this._hexFromColor(s.fillColor || defaultFill);
+                let defaultOp = 1; // Default to 100% for annotation tools
+                if (this.activeTool.type === 'table') defaultOp = 1;
+                const bgOpTools = ['callout', 'comment', 'pin', 'price-label', 'table'];
+                const useBgOp = bgOpTools.includes(this.activeTool.type) || s.backgroundOpacity !== undefined;
+                const opVal = s.opacity !== undefined ? s.opacity : (s.backgroundOpacity !== undefined ? s.backgroundOpacity : defaultOp);
+
+                this._syncAdvancedLine('shape-fill-color-container', { hexAlpha: this._rgbaToHex(s.fillColor || defaultFill, opVal) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.fillColor = val.color;
+                        if (useBgOp) {
+                            this.tempStyle.backgroundOpacity = val.opacity;
+                        } else {
+                            this.tempStyle.opacity = val.opacity;
+                        }
+                        this.updatePreview();
+                    }
+                });
             }
-            this._syncCustomWidthPicker('shape-border-width-picker', s.width || 1, s.color);
 
-            let defaultOp = 0.3;
-            if (this.activeTool.type === 'table') defaultOp = 1;
+            // Opacity & labels are now handled inside AdvancedLineSetting
 
-            const opVal = Math.round((s.opacity !== undefined ? s.opacity :
-                (s.backgroundOpacity !== undefined ? s.backgroundOpacity : defaultOp)) * 100);
-            document.getElementById('shape-opacity').value = opVal;
-            document.getElementById('shape-opacity-label').textContent = opVal + '%';
-            document.getElementById('shape-text-color').value = this._hexFromColor(s.textColor || s.color);
-            document.getElementById('shape-font-size').value = fSize;
-
-            document.getElementById('shape-text-bold').classList.toggle('active', s.fontWeight === 'bold');
-            document.getElementById('shape-text-italic').classList.toggle('active', s.fontStyle === 'italic');
-            document.getElementById('shape-text-content').value = s.text || '';
+            if (textColorEl) {
+                this._syncAdvancedLine('shape-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || s.color) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    showOpacity: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.textColor = val.color;
+                    }
+                });
+            }
+            if (fontSizeEl) fontSizeEl.value = fSize;
+            if (boldEl) boldEl.classList.toggle('active', s.fontWeight === 'bold');
+            if (italicEl) italicEl.classList.toggle('active', s.fontStyle === 'italic');
+            if (textContentEl) {
+                textContentEl.value = s.text || '';
+                textContentEl.oninput = (e) => {
+                    this.tempStyle.text = e.target.value;
+                    this.updatePreview();
+                };
+            }
         }
 
         if (category === 'text' || category === 'table') {
-            document.getElementById('text-color').value = this._hexFromColor(s.textColor || s.color);
-            document.getElementById('text-font-size').value = fSize;
-            document.getElementById('text-bold').classList.toggle('active', s.fontWeight === 'bold');
-            document.getElementById('text-italic').classList.toggle('active', s.fontStyle === 'italic');
-            document.getElementById('text-align').value = s.textAlign || 'center';
-            document.getElementById('settings-text-content').value = s.text || '';
+            const textColorEl_Text = document.getElementById('text-color-container');
+            const fontSizeEl = document.getElementById('text-font-size');
+            const boldEl = document.getElementById('text-bold');
+            const italicEl = document.getElementById('text-italic');
+            const textAlignEl = document.getElementById('text-align');
+            const textContentEl = document.getElementById('settings-text-content');
+
+            if (textColorEl_Text) {
+                this._syncAdvancedLine('text-color-container', { hexAlpha: this._hexFromColor(s.textColor || s.color) }, {
+                    compact: true,
+                    showThickness: false,
+                    showStyle: false,
+                    showOpacity: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.textColor = val.color;
+                    }
+                });
+            }
+            if (fontSizeEl) fontSizeEl.value = fSize;
+            if (boldEl) boldEl.classList.toggle('active', s.fontWeight === 'bold');
+            if (italicEl) italicEl.classList.toggle('active', s.fontStyle === 'italic');
+            if (textAlignEl) textAlignEl.value = s.textAlign || 'center';
+            if (textContentEl) {
+                textContentEl.value = s.text || '';
+                textContentEl.oninput = (e) => {
+                    this.tempStyle.text = e.target.value;
+                    this.updatePreview();
+                };
+            }
             if (category === 'text') {
-                document.getElementById('text-line-color').value = this._hexFromColor(s.color);
-                this._syncCustomWidthPicker('text-line-width-picker', s.width || 1, s.color);
+                this._syncAdvancedLine('text-line-advanced', {
+                    hexAlpha: s.color || '#2962FF',
+                    thickness: s.width || 1
+                }, {
+                    showStyle: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.color = val.hexAlpha;
+                        this.tempStyle.width = val.thickness;
+                    }
+                });
             }
         }
 
@@ -1318,21 +1452,41 @@ export class ToolSettingsController {
                 const regOnly = document.getElementById('fib-reg-settings');
                 if (regOnly) regOnly.style.display = 'none';
 
-                document.getElementById('fib-grid-show').checked = s.gridShow !== false;
-                document.getElementById('fib-grid-color').value = this._hexFromColor(s.gridColor || '#2962ff');
-                this._syncCustomWidthPicker('fib-grid-width-picker', s.gridWidth || 1, s.gridColor || '#2962ff');
-                document.getElementById('fib-grid-dash').value = this._dashToKey(s.gridDash || 'solid');
+                const gridShowEl = document.getElementById('fib-grid-show');
+                if (gridShowEl) gridShowEl.checked = s.gridShow !== false;
+                
+                this._syncAdvancedLine('fib-grid-advanced', {
+                    hexAlpha: s.gridColor || '#2962ff',
+                    thickness: s.gridWidth || 1,
+                    style: this._dashToKey(s.gridDash || 'solid')
+                }, {
+                    onUpdate: (val) => {
+                        this.tempStyle.gridColor = val.hexAlpha;
+                        this.tempStyle.gridWidth = val.thickness;
+                        this.tempStyle.gridDash = this._keyToDash(val.style);
+                    }
+                });
 
-                document.getElementById('fib-price-labels-left').checked = (s.priceLabelsLeft !== undefined) ? !!s.priceLabelsLeft : true;
-                document.getElementById('fib-price-labels-right').checked = (s.priceLabelsRight !== undefined) ? !!s.priceLabelsRight : true;
-                document.getElementById('fib-time-labels-top').checked = (s.timeLabelsTop !== undefined) ? !!s.timeLabelsTop : true;
-                document.getElementById('fib-time-labels-bottom').checked = (s.timeLabelsBottom !== undefined) ? !!s.timeLabelsBottom : true;
+                const labelsLeftEl = document.getElementById('fib-price-labels-left');
+                const labelsRightEl = document.getElementById('fib-price-labels-right');
+                const timeTopEl = document.getElementById('fib-time-labels-top');
+                const timeBottomEl = document.getElementById('fib-time-labels-bottom');
 
-                document.getElementById('fib-background-show').checked = s.backgroundShow !== false;
-                document.getElementById('fib-background-color').style.display = 'none';
+                if (labelsLeftEl) labelsLeftEl.checked = (s.priceLabelsLeft !== undefined) ? !!s.priceLabelsLeft : true;
+                if (labelsRightEl) labelsRightEl.checked = (s.priceLabelsRight !== undefined) ? !!s.priceLabelsRight : true;
+                if (timeTopEl) timeTopEl.checked = (s.timeLabelsTop !== undefined) ? !!s.timeLabelsTop : true;
+                if (timeBottomEl) timeBottomEl.checked = (s.timeLabelsBottom !== undefined) ? !!s.timeLabelsBottom : true;
+
+                const bgShowEl = document.getElementById('fib-background-show');
+                const bgColorEl = document.getElementById('fib-background-color');
+                const opEl = document.getElementById('fib-opacity');
+                const opLabel = document.getElementById('fib-opacity-label');
+
+                if (bgShowEl) bgShowEl.checked = s.backgroundShow !== false;
+                if (bgColorEl) bgColorEl.style.display = 'none';
                 const opVal = Math.round((s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.1) * 100);
-                document.getElementById('fib-opacity').value = opVal;
-                document.getElementById('fib-opacity-label').textContent = opVal + '%';
+                if (opEl) opEl.value = opVal;
+                if (opLabel) opLabel.textContent = opVal + '%';
 
                 // Ensure levels are present
                 if (!s.priceLevels && this.activeTool.getDefaultFanStyle) {
@@ -1351,38 +1505,74 @@ export class ToolSettingsController {
                 const pGroupB = priceLevels.slice(pHalf);
 
                 const pColA = document.createElement('div');
-                pColA.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                pColA.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
                 const pColB = document.createElement('div');
-                pColB.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                pColB.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
 
                 const makePriceRow = (lvlObj, idxOffset) => {
                     const actualIdx = idxOffset;
                     const row = document.createElement('div');
                     row.className = 'settings-row';
-                    row.style.margin = '0';
-                    row.style.gap = '4px';
+                    const useAdvanced = ['fibonacci-circle', 'fibonacci-arcs', 'fibonacci-wedge', 'pitch-fan'].includes(this.activeTool.type);
+                    
+                    if (useAdvanced) {
+                        const cpContainerId = `fib-level-color-${actualIdx}-${Math.random().toString(36).substr(2, 9)}`;
                     row.innerHTML = `
-                                <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''} style="margin:0;">
-                                <div style="font-size:12px; color:#f0f3fa; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${lvlObj.level}</div>
-                                <input type="color" class="settings-color-picker" value="${this._hexFromColor(lvlObj.color)}">
-                            `;
-                    const cb = row.querySelector('input[type="checkbox"]');
+                                    <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''}>
+                                    <div style="font-size: 12px; color: #d1d4dc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${lvlObj.level}</div>
+                                    <div id="${cpContainerId}"></div>
+                                `;
+                        const cb = row.querySelector('input[type="checkbox"]');
+                        const cpContainer = row.querySelector(`#${cpContainerId}`);
 
-                    const cp = row.querySelector('input[type="color"]');
+                        const isFan = ['pitch-fan'].includes(this.activeTool.type);
+                        const adv = new AdvancedLineSetting(cpContainer, {
+                            compact: true,
+                            showOpacity: false,
+                            showStyle: isFan,
+                            defaultColor: lvlObj.color || s.color,
+                            defaultThickness: lvlObj.width || s.width || 1,
+                            defaultStyle: lvlObj.dash || 'solid',
+                            onChange: (val) => {
+                                if (!this.tempStyle.priceLevels) this.tempStyle.priceLevels = JSON.parse(JSON.stringify(s.priceLevels));
+                                this.tempStyle.priceLevels[actualIdx].color = val.hexAlpha;
+                                this.tempStyle.priceLevels[actualIdx].width = val.thickness;
+                                this.tempStyle.priceLevels[actualIdx].dash = val.style;
+                                this.updatePreview();
+                            }
+                        });
 
+                        cb.onchange = (e) => {
+                            row.style.opacity = e.target.checked ? '1' : '0.4';
+                            if (adv.container) adv.container.style.pointerEvents = e.target.checked ? 'auto' : 'none';
+                            if (!this.tempStyle.priceLevels) this.tempStyle.priceLevels = JSON.parse(JSON.stringify(s.priceLevels));
+                            this.tempStyle.priceLevels[actualIdx].visibility = e.target.checked;
+                            this.updatePreview();
+                        };
+                    } else {
+                        row.style.margin = '0';
+                        row.style.gap = '4px';
+                        row.innerHTML = `
+                                    <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''}>
+                                    <div style="font-size: 12px; color: #d1d4dc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${lvlObj.level}</div>
+                                    <input type="color" class="settings-color-picker" value="${this._hexFromColor(lvlObj.color)}">
+                                `;
+                        const cb = row.querySelector('input[type="checkbox"]');
+                        const cp = row.querySelector('input[type="color"]');
 
-                    cb.onchange = (e) => {
-                        row.style.opacity = e.target.checked ? '1' : '0.4';
-                        cp.disabled = !e.target.checked;
-                        if (!this.tempStyle.priceLevels) this.tempStyle.priceLevels = JSON.parse(JSON.stringify(s.priceLevels));
-                        this.tempStyle.priceLevels[actualIdx].visibility = e.target.checked;
-                        this.updatePreview();
-                    };
-                    cp.oninput = (e) => {
-                        if (!this.tempStyle.priceLevels) this.tempStyle.priceLevels = JSON.parse(JSON.stringify(s.priceLevels));
-                        this.tempStyle.priceLevels[actualIdx].color = e.target.value;
-                        this.updatePreview();
-                    };
+                        cb.onchange = (e) => {
+                            row.style.opacity = e.target.checked ? '1' : '0.4';
+                            cp.disabled = !e.target.checked;
+                            if (!this.tempStyle.priceLevels) this.tempStyle.priceLevels = JSON.parse(JSON.stringify(s.priceLevels));
+                            this.tempStyle.priceLevels[actualIdx].visibility = e.target.checked;
+                            this.updatePreview();
+                        };
+                        cp.oninput = (e) => {
+                            if (!this.tempStyle.priceLevels) this.tempStyle.priceLevels = JSON.parse(JSON.stringify(s.priceLevels));
+                            this.tempStyle.priceLevels[actualIdx].color = e.target.value;
+                            this.updatePreview();
+                        };
+                    }
                     return row;
                 };
 
@@ -1405,9 +1595,9 @@ export class ToolSettingsController {
                 const tGroupB = timeLevels.slice(tHalf);
 
                 const tColA = document.createElement('div');
-                tColA.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                tColA.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
                 const tColB = document.createElement('div');
-                tColB.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                tColB.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
 
                 const makeTimeRow = (lvlObj, idxOffset) => {
                     const actualIdx = idxOffset;
@@ -1416,8 +1606,8 @@ export class ToolSettingsController {
                     row.style.margin = '0';
                     row.style.gap = '4px';
                     row.innerHTML = `
-                                <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''} style="margin:0;">
-                                <div style="font-size:12px; color:#f0f3fa; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${lvlObj.level}</div>
+                                <input type="checkbox" ${lvlObj.visibility !== false ? 'checked' : ''}>
+                                <div style="font-size: 12px; color: #d1d4dc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${lvlObj.level}</div>
                                 <input type="color" class="settings-color-picker" value="${this._hexFromColor(lvlObj.color)}">
                             `;
                     const cb = row.querySelector('input[type="checkbox"]');
@@ -1492,95 +1682,143 @@ export class ToolSettingsController {
                 const groupB = currentLevels.slice(half);
 
                 const colA = document.createElement('div');
-                colA.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                colA.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
                 const colB = document.createElement('div');
-                colB.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+                colB.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
 
                 const makeRow = (lvlObj) => {
                     const level = lvlObj.level;
                     const row = document.createElement('div');
-                    row.className = 'settings-row'; row.style.margin = '0'; row.style.gap = '4px'; row.style.alignItems = 'center';
+                    row.className = 'settings-row';
                     const isVisible = visibleLevels.includes(level);
                     const currentColor = levelColors[level] || defaultColors[level] || s.color;
                     const currentWidth = (this.tempStyle.levelWidths && this.tempStyle.levelWidths[level] !== undefined)
                         ? this.tempStyle.levelWidths[level]
                         : (s.levelWidths && s.levelWidths[level] !== undefined ? s.levelWidths[level] : 1);
+                    const useAdvanced = ['fibonacci-circle', 'fibonacci-arcs', 'fibonacci-wedge', 'pitch-fan', 'fibonacci-retracement', 'fibonacci-extension', 'fibonacci-time', 'fibonacci-fan'].includes(this.activeTool.type);
 
-                    row.innerHTML = `
-                                   <input type="checkbox" ${isVisible ? 'checked' : ''} style="margin:0;">
-                                   <div style="font-size:12px; color:#f0f3fa; flex:1; white-space:nowrap;">${lvlObj.value || level}</div>
-                                   <input type="color" class="settings-color-picker" value="${this._hexFromColor(currentColor)}">
-                                   ${isSpecializedFib ? `
-                                   <div class="custom-width-picker">
-                                       <div class="custom-width-picker-line" style="height: ${currentWidth}px; background-color: ${this._hexFromColor(currentColor)};"></div>
-                                       <div class="custom-width-dropdown">
-                                           ${[1, 2, 3, 4].map(w => `
-                                               <div class="custom-width-option ${w === currentWidth ? 'active' : ''}" data-width="${w}">
-                                                   <div class="line-hint" style="height: ${w}px; background-color: ${this._hexFromColor(currentColor)};"></div>
-                                               </div>
-                                           `).join('')}
-                                       </div>
-                                   </div>` : ''}
-                               `;
-                    const cb = row.querySelector('input[type="checkbox"]');
+                    if (useAdvanced) {
+                        const cpContainerId = `fib-row-color-${level.toString().replace('.', '-')}-${Math.random().toString(36).substr(2, 9)}`;
+                        row.innerHTML = `
+                                       <input type="checkbox" ${isVisible ? 'checked' : ''}>
+                                       <div style="font-size: 12px; color: #d1d4dc; flex: 1; white-space: nowrap;">${lvlObj.value || level}</div>
+                                       <div id="${cpContainerId}"></div>
+                                   `;
+                        const cb = row.querySelector('input[type="checkbox"]');
+                        const cpContainer = row.querySelector(`#${cpContainerId}`);
 
-                    const cp = row.querySelector('input[type="color"]');
-                    const picker = row.querySelector('.custom-width-picker');
+                        const isFan = ['pitch-fan', 'fibonacci-fan'].includes(this.activeTool.type);
+                        const isRetracement = ['fibonacci-retracement', 'fibonacci-extension'].includes(this.activeTool.type);
+                        const isFibTime = this.activeTool.type === 'fibonacci-time';
+                        
+                        const adv = new AdvancedLineSetting(cpContainer, {
+                            compact: true,
+                            showOpacity: true,
+                            showThickness: !isRetracement || isFibTime,
+                            showStyle: isFan,
+                            defaultColor: currentColor,
+                            defaultThickness: currentWidth,
+                            defaultStyle: (this.tempStyle.levelDashes && this.tempStyle.levelDashes[level]) || (s.levelDashes && s.levelDashes[level]) || 'solid',
+                            onChange: (val) => {
+                                if (!this.tempStyle.levelColors) this.tempStyle.levelColors = { ...levelColors };
+                                this.tempStyle.levelColors[level] = val.hexAlpha;
+                                if (!this.tempStyle.levelWidths) this.tempStyle.levelWidths = s.levelWidths ? { ...s.levelWidths } : {};
+                                this.tempStyle.levelWidths[level] = val.thickness;
+                                if (!this.tempStyle.levelDashes) this.tempStyle.levelDashes = s.levelDashes ? { ...s.levelDashes } : {};
+                                this.tempStyle.levelDashes[level] = val.style;
+                                this.updatePreview();
+                            }
+                        });
 
-                    const updateState = (checked) => {
-                        row.style.opacity = checked ? '1' : '0.4';
-                        cp.disabled = !checked;
-                        if (picker) {
-                            picker.style.pointerEvents = checked ? 'auto' : 'none';
-                            picker.style.opacity = checked ? '1' : '0.5';
-                        }
-                    };
-                    updateState(cb.checked);
+                        const updateState = (checked) => {
+                            row.style.opacity = checked ? '1' : '0.4';
+                            if (adv.container) adv.container.style.pointerEvents = checked ? 'auto' : 'none';
+                        };
+                        updateState(cb.checked);
 
-                    cb.onchange = (e) => {
-                        updateState(e.target.checked);
-                        if (this.tempStyle.visibleLevels === undefined) this.tempStyle.visibleLevels = [...visibleLevels];
-                        if (e.target.checked) { if (!this.tempStyle.visibleLevels.includes(level)) this.tempStyle.visibleLevels.push(level); }
-                        else { this.tempStyle.visibleLevels = this.tempStyle.visibleLevels.filter(l => l !== level); }
-                        this.updatePreview();
-                    };
-                    cp.oninput = (e) => {
-                        if (!this.tempStyle.levelColors) this.tempStyle.levelColors = { ...levelColors };
-                        this.tempStyle.levelColors[level] = e.target.value;
-                        if (picker) {
-                            const lines = picker.querySelectorAll('.custom-width-picker-line, .line-hint');
-                            lines.forEach(l => l.style.backgroundColor = e.target.value);
-                        }
-                        this.updatePreview();
-                    };
+                        cb.onchange = (e) => {
+                            updateState(e.target.checked);
+                            if (this.tempStyle.visibleLevels === undefined) this.tempStyle.visibleLevels = [...visibleLevels];
+                            if (e.target.checked) { if (!this.tempStyle.visibleLevels.includes(level)) this.tempStyle.visibleLevels.push(level); }
+                            else { this.tempStyle.visibleLevels = this.tempStyle.visibleLevels.filter(l => l !== level); }
+                            this.updatePreview();
+                        };
+                    } else {
+                        row.innerHTML = `
+                                       <input type="checkbox" ${isVisible ? 'checked' : ''}>
+                                       <div style="font-size: 12px; color: #d1d4dc; flex: 1; white-space: nowrap;">${lvlObj.value || level}</div>
+                                       <input type="color" class="settings-color-picker" value="${this._hexFromColor(currentColor)}">
+                                       ${isSpecializedFib ? `
+                                       <div class="custom-width-picker">
+                                           <div class="custom-width-picker-line" style="height: ${currentWidth}px; background-color: ${this._hexFromColor(currentColor)};"></div>
+                                           <div class="custom-width-dropdown">
+                                               ${[1, 2, 3, 4].map(w => `
+                                                   <div class="custom-width-option ${w === currentWidth ? 'active' : ''}" data-width="${w}">
+                                                       <div class="line-hint" style="height: ${w}px; background-color: ${this._hexFromColor(currentColor)};"></div>
+                                                   </div>
+                                               `).join('')}
+                                           </div>
+                                       </div>` : ''}
+                                   `;
+                        const cb = row.querySelector('input[type="checkbox"]');
+                        const cp = row.querySelector('input[type="color"]');
+                        const picker = row.querySelector('.custom-width-picker');
 
-                    if (picker) {
-                        const dropdown = picker.querySelector('.custom-width-dropdown');
-                        const displayLine = picker.querySelector('.custom-width-picker-line');
+                        const updateState = (checked) => {
+                            row.style.opacity = checked ? '1' : '0.4';
+                            cp.disabled = !checked;
+                            if (picker) {
+                                picker.style.pointerEvents = checked ? 'auto' : 'none';
+                                picker.style.opacity = checked ? '1' : '0.5';
+                            }
+                        };
+                        updateState(cb.checked);
 
-                        picker.onclick = (e) => {
-                            e.stopPropagation();
-                            document.querySelectorAll('.custom-width-dropdown.show').forEach(d => {
-                                if (d !== dropdown) d.classList.remove('show');
-                            });
-                            dropdown.classList.toggle('show');
+                        cb.onchange = (e) => {
+                            updateState(e.target.checked);
+                            if (this.tempStyle.visibleLevels === undefined) this.tempStyle.visibleLevels = [...visibleLevels];
+                            if (e.target.checked) { if (!this.tempStyle.visibleLevels.includes(level)) this.tempStyle.visibleLevels.push(level); }
+                            else { this.tempStyle.visibleLevels = this.tempStyle.visibleLevels.filter(l => l !== level); }
+                            this.updatePreview();
+                        };
+                        cp.oninput = (e) => {
+                            if (!this.tempStyle.levelColors) this.tempStyle.levelColors = { ...levelColors };
+                            this.tempStyle.levelColors[level] = e.target.value;
+                            if (picker) {
+                                const lines = picker.querySelectorAll('.custom-width-picker-line, .line-hint');
+                                lines.forEach(l => l.style.backgroundColor = e.target.value);
+                            }
+                            this.updatePreview();
                         };
 
-                        dropdown.querySelectorAll('.custom-width-option').forEach(opt => {
-                            opt.onclick = (e) => {
+                        if (picker) {
+                            const dropdown = picker.querySelector('.custom-width-dropdown');
+                            const displayLine = picker.querySelector('.custom-width-picker-line');
+
+                            picker.onclick = (e) => {
                                 e.stopPropagation();
-                                const w = parseInt(opt.dataset.width);
-                                if (!this.tempStyle.levelWidths) {
-                                    this.tempStyle.levelWidths = s.levelWidths ? { ...s.levelWidths } : {};
-                                }
-                                this.tempStyle.levelWidths[level] = w;
-                                displayLine.style.height = w + 'px';
-                                dropdown.querySelectorAll('.custom-width-option').forEach(o => o.classList.remove('active'));
-                                opt.classList.add('active');
-                                dropdown.classList.remove('show');
-                                this.updatePreview();
+                                document.querySelectorAll('.custom-width-dropdown.show').forEach(d => {
+                                    if (d !== dropdown) d.classList.remove('show');
+                                });
+                                dropdown.classList.toggle('show');
                             };
-                        });
+
+                            dropdown.querySelectorAll('.custom-width-option').forEach(opt => {
+                                opt.onclick = (e) => {
+                                    e.stopPropagation();
+                                    const w = parseInt(opt.dataset.width);
+                                    if (!this.tempStyle.levelWidths) {
+                                        this.tempStyle.levelWidths = s.levelWidths ? { ...s.levelWidths } : {};
+                                    }
+                                    this.tempStyle.levelWidths[level] = w;
+                                    displayLine.style.height = w + 'px';
+                                    dropdown.querySelectorAll('.custom-width-option').forEach(o => o.classList.remove('active'));
+                                    opt.classList.add('active');
+                                    dropdown.classList.remove('show');
+                                    this.updatePreview();
+                                };
+                            });
+                        }
                     }
                     return row;
                 };
@@ -1593,114 +1831,109 @@ export class ToolSettingsController {
 
                 const isChannel = this.activeTool.type === 'fibonacci-channel';
                 const isCircle = this.activeTool.type === 'fibonacci-circle';
+                const isFibFan = this.activeTool.type === 'fibonacci-fan';
                 // Median Row Logic
                 const medianRow = document.getElementById('fib-median-row');
                 if (medianRow) {
                     medianRow.style.display = isPitchFan ? '' : 'none';
                     if (isPitchFan) {
                         const mShow = document.getElementById('fib-median-show');
-                        const mColor = document.getElementById('fib-median-color');
                         mShow.checked = true; mShow.style.display = 'none';
-                        mColor.value = this._hexFromColor(s.medianColor || '#ffffff');
 
-                        // Reset container for median width picker if needed
-                        let mWidthPicker = medianRow.querySelector('.custom-width-picker');
-                        if (!mWidthPicker) {
-                            mWidthPicker = document.createElement('div');
-                            mWidthPicker.className = 'custom-width-picker';
-                            medianRow.querySelector('.settings-input-container').appendChild(mWidthPicker);
-                        }
-                        const mWidth = s.medianWidth !== undefined ? s.medianWidth : 2;
-                        const mHex = this._hexFromColor(s.medianColor || '#ffffff');
-                        mWidthPicker.innerHTML = `
-                                    <div class="custom-width-picker-line" style="height: ${mWidth}px; background-color: ${mHex};"></div>
-                                    <div class="custom-width-dropdown">
-                                        ${[1, 2, 3, 4].map(w => `
-                                            <div class="custom-width-option" data-width="${w}">
-                                                <div class="line-hint" style="height: ${w}px; background-color: ${mHex};"></div>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                `;
-                        mShow.onchange = null;
-                        mColor.oninput = (e) => {
-                            this.tempStyle.medianColor = e.target.value;
-                            const lines = mWidthPicker.querySelectorAll('.custom-width-picker-line, .line-hint');
-                            lines.forEach(l => l.style.backgroundColor = e.target.value);
-                            this.updatePreview();
-                        };
-                        const mDropdown = mWidthPicker.querySelector('.custom-width-dropdown');
-                        const mDisplayLine = mWidthPicker.querySelector('.custom-width-picker-line');
-                        mWidthPicker.onclick = (e) => {
-                            e.stopPropagation();
-                            document.querySelectorAll('.custom-width-dropdown.show').forEach(d => { if (d !== mDropdown) d.classList.remove('show'); });
-                            mDropdown.classList.toggle('show');
-                        };
-                        mDropdown.querySelectorAll('.custom-width-option').forEach(opt => {
-                            opt.onclick = (e) => {
-                                e.stopPropagation();
-                                const w = parseInt(opt.dataset.width);
-                                this.tempStyle.medianWidth = w;
-                                mDisplayLine.style.height = w + 'px';
-                                mDropdown.classList.remove('show');
-                                this.updatePreview();
-                            };
+                        this._syncAdvancedLine('fib-median-advanced', {
+                            hexAlpha: s.medianColor || '#ffffff',
+                            thickness: s.medianWidth !== undefined ? s.medianWidth : 2
+                        }, {
+                            showStyle: false,
+                            onUpdate: (val) => {
+                                this.tempStyle.medianColor = val.hexAlpha;
+                                this.tempStyle.medianWidth = val.thickness;
+                            }
                         });
                     }
                 }
 
                 document.getElementById('fib-trendline-row').style.display = (isChannel || isSpiral || isPitchFan) ? 'none' : '';
                 document.getElementById('fib-trendline-show').checked = s.trendLineShow !== false;
-                document.getElementById('fib-trendline-color').value = this._hexFromColor(s.trendLineColor || s.color);
+                
+                this._syncAdvancedLine('fib-trendline-advanced', {
+                    hexAlpha: s.trendLineColor || s.color
+                }, {
+                    showThickness: false,
+                    showStyle: false,
+                    onUpdate: (val) => {
+                        this.tempStyle.trendLineColor = val.hexAlpha;
+                    }
+                });
 
                 const levelsLineRow = document.getElementById('fib-levels-line-row');
                 if (levelsLineRow) levelsLineRow.style.display = isSpecializedFib ? 'none' : '';
-                this._syncCustomWidthPicker('fib-line-width-picker', s.width || 1, s.color);
-                document.getElementById('fib-line-dash').value = this._dashToKey(s.dash || []);
+                
+                this._syncCustomWidthPicker('fib-line-width-picker', s.width || 1, s.color || '#2962FF');
+                const fibLineDashEl = document.getElementById('fib-line-dash');
+                if (fibLineDashEl) fibLineDashEl.value = this._dashToKey(s.dash || 'solid');
 
-                document.getElementById('fib-extend-row').style.display = (isCircle || isSpiral || isWedgeOrArcs || this.activeTool.type === 'fibonacci-time' || isPitchFan) ? 'none' : '';
-                document.getElementById('fib-extend-left-label').textContent = (this.activeTool.type === 'fibonacci-time') ? 'Top' : 'Left';
-                document.getElementById('fib-extend-right-label').textContent = (this.activeTool.type === 'fibonacci-time') ? 'Bottom' : 'Right';
+                const extendRow = document.getElementById('fib-extend-row');
+                if (extendRow) extendRow.style.display = (isCircle || isSpiral || isWedgeOrArcs || this.activeTool.type === 'fibonacci-time' || isPitchFan) ? 'none' : '';
+                
+                const extLeftLabel = document.getElementById('fib-extend-left-label');
+                const extRightLabel = document.getElementById('fib-extend-right-label');
+                if (extLeftLabel) extLeftLabel.textContent = (this.activeTool.type === 'fibonacci-time') ? 'Top' : 'Left';
+                if (extRightLabel) extRightLabel.textContent = (this.activeTool.type === 'fibonacci-time') ? 'Bottom' : 'Right';
 
-                document.getElementById('fib-labels-row').style.display = (isCircle || isSpiral || isPitchFan) ? 'none' : '';
+                const labelsRow = document.getElementById('fib-labels-row');
+                if (labelsRow) labelsRow.style.display = (isCircle || isSpiral || isPitchFan) ? 'none' : '';
+                
                 const labelsPos = document.getElementById('fib-labels-position');
                 const labelsVPos = document.getElementById('fib-labels-v-position');
                 if (labelsPos) labelsPos.style.display = (isWedgeOrArcs || isPitchFan) ? 'none' : '';
                 if (labelsVPos) labelsVPos.style.display = (this.activeTool.type === 'fibonacci-time') ? '' : 'none';
 
-                document.getElementById('fib-labels-show').checked = s.labelsShow !== false;
-                document.getElementById('fib-labels-position').value = s.labelsPosition || 'left';
+                const labelsShowEl = document.getElementById('fib-labels-show');
+                if (labelsShowEl) labelsShowEl.checked = s.labelsShow !== false;
+                if (labelsPos) labelsPos.value = s.labelsPosition || 'left';
+                
                 const vPos = document.getElementById('fib-labels-v-position');
                 if (vPos) vPos.value = s.labelsVerticalPosition || 'bottom';
 
-                document.getElementById('fib-background-row').style.display = isSpiral ? 'none' : '';
-                document.getElementById('fib-background-show').checked = s.backgroundShow !== false;
-                document.getElementById('fib-background-show').onchange = (e) => {
-                    this.tempStyle.backgroundShow = e.target.checked;
-                    this.updatePreview();
-                };
-                document.getElementById('fib-reverse-row').style.display = (isCircle || isSpiral || isWedgeOrArcs || isPitchFan) ? 'none' : '';
-
-                const bgColorEl = document.getElementById('fib-background-color');
-                if (isChannel || isCircle || this.activeTool.type === 'fibonacci-retracement' || this.activeTool.type === 'fibonacci-extension' || this.activeTool.type === 'fibonacci-time' || isSpecializedFib || isPitchFan || isFibFan) {
-                    bgColorEl.style.display = 'none';
-                } else {
-                    bgColorEl.style.display = '';
-                    bgColorEl.value = this._hexFromColor(s.fillColor || s.color);
+                const bgColorRow = document.getElementById('fib-background-row');
+                if (bgColorRow) {
+                    if (isSpiral || this.activeTool.type === 'cyclic-lines') {
+                        bgColorRow.style.display = 'none';
+                    } else {
+                        bgColorRow.style.display = '';
+                    }
                 }
-                const currentOp = s.opacity !== undefined ? s.opacity : 0.2;
-                const opVal = Math.round(currentOp * 100);
-                document.getElementById('fib-opacity').value = opVal;
-                document.getElementById('fib-opacity-label').textContent = opVal + '%';
-                document.getElementById('fib-opacity').oninput = (e) => {
-                    const val = parseInt(e.target.value);
-                    this.tempStyle.opacity = val / 100;
-                    document.getElementById('fib-opacity-label').textContent = val + '%';
-                    this.updatePreview();
-                };
+                
+                const backgroundShowEl = document.getElementById('fib-background-show');
+                if (backgroundShowEl) {
+                    backgroundShowEl.checked = s.backgroundShow !== false;
+                    backgroundShowEl.onchange = (e) => {
+                        this.tempStyle.backgroundShow = e.target.checked;
+                        this.updatePreview();
+                    };
+                }
+
+                const opVal = s.opacity !== undefined ? s.opacity : (s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2);
+                const opSlider = document.getElementById('fib-background-opacity');
+                const opLabel = document.getElementById('fib-background-opacity-label');
+                if (opSlider && opLabel) {
+                    const pct = Math.round(opVal * 100);
+                    opSlider.value = pct;
+                    opLabel.textContent = pct + '%';
+                    opSlider.oninput = (e) => {
+                        const val = parseInt(e.target.value);
+                        opLabel.textContent = val + '%';
+                        this.tempStyle.opacity = val / 100;
+                        this.tempStyle.backgroundOpacity = val / 100;
+                        this.updatePreview();
+                    };
+                }
+
 
                 const fontSizeRow = document.getElementById('fib-font-size-row');
                 if (fontSizeRow) fontSizeRow.style.display = (isSpiral || isPitchFan) ? 'none' : '';
+
             }
 
             document.getElementById('fib-reverse').onchange = (e) => {
@@ -1711,37 +1944,87 @@ export class ToolSettingsController {
         }
 
         if (category === 'chart-patterns') {
-            document.getElementById('cp-text-color').value = this._hexFromColor(s.textColor || '#ffffff');
+            this._syncAdvancedLine('cp-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || '#ffffff') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.textColor = val.color;
+                }
+            });
+
+            const cpBgOp = s.opacity !== undefined ? s.opacity : (s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.3);
+            this._syncAdvancedLine('cp-background-color-container', { hexAlpha: this._rgbaToHex(s.fillColor || s.color, cpBgOp) }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.fillColor = val.color;
+                    this.tempStyle.opacity = val.opacity;
+                    this.tempStyle.backgroundOpacity = val.opacity;
+                }
+            });
+
             document.getElementById('cp-font-size').value = parseInt(fSize);
             document.getElementById('cp-bold').classList.toggle('active', s.fontWeight === 'bold');
             document.getElementById('cp-italic').classList.toggle('active', s.fontStyle === 'italic');
 
-            document.getElementById('cp-border-color').value = this._hexFromColor(s.color || '#2962FF');
-            this._syncCustomWidthPicker('cp-border-width-picker', s.width || 1, s.color || '#2962FF');
+            this._syncAdvancedLine('cp-border-advanced', {
+                hexAlpha: s.color || '#2962FF',
+                thickness: s.width || 1
+            }, {
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.color = val.hexAlpha;
+                    this.tempStyle.width = val.thickness;
+                }
+            });
 
             document.getElementById('cp-background-show').checked = s.backgroundShow !== false;
-            document.getElementById('cp-background-color').value = this._hexFromColor(s.fillColor || s.color);
-            const opVal = Math.round((s.opacity !== undefined ? s.opacity : 0.3) * 100);
-            document.getElementById('cp-background-opacity').value = opVal;
-            document.getElementById('cp-background-opacity-label').textContent = opVal + '%';
+
         }
 
         if (category === 'elliott-waves') {
-            const ewColorEl = document.getElementById('ew-color');
-            const ewTextColorEl = document.getElementById('ew-text-color');
-            if (ewColorEl) ewColorEl.value = this._hexFromColor(s.color || '#2962FF');
-            this._syncCustomWidthPicker('ew-width-picker', s.width || 2, s.color || '#2962FF');
-            if (ewTextColorEl) ewTextColorEl.value = this._hexFromColor(s.textColor || '#ffffff');
+            this._syncAdvancedLine('ew-advanced', {
+                hexAlpha: s.color || '#2962FF',
+                thickness: s.width || 2
+            }, {
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.color = val.hexAlpha;
+                    this.tempStyle.width = val.thickness;
+                }
+            });
+
+            this._syncAdvancedLine('ew-text-color-container', { hexAlpha: this._hexFromColor(s.textColor || '#ffffff') }, {
+                compact: true,
+                showThickness: false,
+                showStyle: false,
+                showOpacity: false,
+                onUpdate: (val) => {
+                    this.tempStyle.textColor = val.color;
+                }
+            });
         }
 
         if (category === 'cycles') {
             const cyColorEl = document.getElementById('cy-color');
-            if (cyColorEl) cyColorEl.value = this._hexFromColor(s.color || '#2962FF');
-            this._syncCustomWidthPicker('cy-width-picker', s.width || 1, s.color || '#2962FF');
+            this._syncAdvancedLine('cy-advanced', {
+                hexAlpha: s.color || '#2962FF',
+                thickness: s.width || 1
+            }, {
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.color = val.hexAlpha;
+                    this.tempStyle.width = val.thickness;
+                }
+            });
         }
 
         if (category === 'pitchfork') {
-            document.getElementById('pitchfork-extend').checked = !!s.extendLines;
+            const pfExtendEl = document.getElementById('pitchfork-extend');
+            if (pfExtendEl) pfExtendEl.checked = !!s.extendLines;
 
             // LEGACY FALLBACK: Ensure levels are present for UI
             if (!s.levels) {
@@ -1769,26 +2052,21 @@ export class ToolSettingsController {
             const medianColor = s.levels?.find(l => l.level === 0)?.color || s.color || '#f23645';
             const medianWidth = s.levels?.find(l => l.level === 0)?.width || s.width || 1;
 
-            const medColorEl = document.getElementById('pitchfork-median-color');
-            medColorEl.value = this._hexFromColor(medianColor);
-            medColorEl.oninput = (e) => {
-                if (!this.tempStyle.levels) this.tempStyle.levels = JSON.parse(JSON.stringify(s.levels));
-                const idx = this.tempStyle.levels.findIndex(l => l.level === 0);
-                if (idx !== -1) {
-                    this.tempStyle.levels[idx].color = e.target.value;
-                    this.updatePreview();
+            this._syncAdvancedLine('pitchfork-median-advanced', {
+                hexAlpha: medianColor,
+                thickness: medianWidth,
+                style: this._dashToKey(s.dash)
+            }, {
+                onUpdate: (val) => {
+                    if (!this.tempStyle.levels) this.tempStyle.levels = JSON.parse(JSON.stringify(s.levels || []));
+                    const idx = this.tempStyle.levels.findIndex(l => l.level === 0);
+                    if (idx !== -1) {
+                        this.tempStyle.levels[idx].color = val.hexAlpha;
+                        this.tempStyle.levels[idx].width = val.thickness;
+                    }
+                    this.tempStyle.dash = this._keyToDash(val.style);
                 }
-            };
-
-            this._initCustomWidthPicker('pitchfork-median-width-picker', (w) => {
-                if (!this.tempStyle.levels) this.tempStyle.levels = JSON.parse(JSON.stringify(s.levels));
-                const idx = this.tempStyle.levels.findIndex(l => l.level === 0);
-                if (idx !== -1) {
-                    this.tempStyle.levels[idx].width = w;
-                    this.updatePreview();
-                }
-            }, medColorEl);
-            this._syncCustomWidthPicker('pitchfork-median-width-picker', medianWidth, medianColor);
+            });
 
             const levels = s.levels || [];
             const filtered = levels.filter(l => l.level !== 0);
@@ -1797,9 +2075,9 @@ export class ToolSettingsController {
             const groupB = filtered.slice(half);
 
             const colA = document.createElement('div');
-            colA.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+            colA.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
             const colB = document.createElement('div');
-            colB.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+            colB.style.cssText = 'display:flex;flex-direction:column;gap:0;flex:1;';
 
             const levelsContainer = document.getElementById('pitchfork-levels-container');
             levelsContainer.innerHTML = '';
@@ -1873,125 +2151,131 @@ export class ToolSettingsController {
             const isSquareFixed = this.activeTool.type === 'gann-square-fixed';
             const isGannBox = this.activeTool.type === 'gann-box';
 
-            document.getElementById('gann-box-settings').style.display = isGannBox ? 'flex' : 'none';
-            document.getElementById('gann-fan-settings').style.display = isFan ? 'flex' : 'none';
-            document.getElementById('gann-square-shared-settings').style.display = (isSquare || isSquareFixed) ? 'flex' : 'none';
+            const gannBoxEl = document.getElementById('gann-box-settings');
+            const gannFanEl = document.getElementById('gann-fan-settings');
+            const gannSquareEl = document.getElementById('gann-square-shared-settings');
+
+            if (gannBoxEl) gannBoxEl.style.display = isGannBox ? 'flex' : 'none';
+            if (gannFanEl) gannFanEl.style.display = isFan ? 'flex' : 'none';
+            if (gannSquareEl) gannSquareEl.style.display = (isSquare || isSquareFixed) ? 'flex' : 'none';
 
             // Multiple labels sync
-            document.getElementById('gann-labels-left').checked = !!s.labelsShowLeft;
-            document.getElementById('gann-labels-right').checked = !!s.labelsShowRight;
-            document.getElementById('gann-labels-top').checked = !!s.labelsShowTop;
-            document.getElementById('gann-labels-bottom').checked = !!s.labelsShowBottom;
+            const labelsLeftEl = document.getElementById('gann-labels-left');
+            const labelsRightEl = document.getElementById('gann-labels-right');
+            const labelsTopEl = document.getElementById('gann-labels-top');
+            const labelsBottomEl = document.getElementById('gann-labels-bottom');
 
-            document.getElementById('gann-h-background-show').checked = s.hBackgroundShow !== false;
+            if (labelsLeftEl) labelsLeftEl.checked = !!s.labelsShowLeft;
+            if (labelsRightEl) labelsRightEl.checked = !!s.labelsShowRight;
+            if (labelsTopEl) labelsTopEl.checked = !!s.labelsShowTop;
+            if (labelsBottomEl) labelsBottomEl.checked = !!s.labelsShowBottom;
 
-            const hOp = Math.round((s.hBackgroundOpacity !== undefined ? s.hBackgroundOpacity : 0.08) * 100);
-            document.getElementById('gann-h-opacity').value = hOp;
-            document.getElementById('gann-h-opacity-label').textContent = hOp + '%';
-            document.getElementById('gann-h-opacity').oninput = (e) => {
-                const val = parseInt(e.target.value);
-                this.tempStyle.hBackgroundOpacity = val / 100;
-                document.getElementById('gann-h-opacity-label').textContent = val + '%';
-                this.updatePreview();
-            };
+            const hBgShowEl = document.getElementById('gann-h-background-show');
+            if (hBgShowEl) {
+                hBgShowEl.checked = s.hBackgroundShow !== false;
+                hBgShowEl.onchange = (e) => { this.tempStyle.hBackgroundShow = e.target.checked; this.updatePreview(); };
+            }
 
-            document.getElementById('gann-v-background-show').checked = s.vBackgroundShow !== false;
+            const hOp = Math.round((s.hBackgroundOpacity !== undefined ? s.hBackgroundOpacity : 0.2) * 100);
+            const hOpEl = document.getElementById('gann-h-opacity');
+            const hOpLabel = document.getElementById('gann-h-opacity-label');
+            if (hOpEl && hOpLabel) {
+                hOpEl.value = hOp;
+                hOpLabel.textContent = hOp + '%';
+                hOpEl.oninput = (e) => {
+                    const val = parseInt(e.target.value);
+                    hOpLabel.textContent = val + '%';
+                    this.tempStyle.hBackgroundOpacity = val / 100;
+                    this.updatePreview();
+                };
+            }
 
-            const vOp = Math.round((s.vBackgroundOpacity !== undefined ? s.vBackgroundOpacity : 0.08) * 100);
-            document.getElementById('gann-v-opacity').value = vOp;
-            document.getElementById('gann-v-opacity-label').textContent = vOp + '%';
-            document.getElementById('gann-v-opacity').oninput = (e) => {
-                const val = parseInt(e.target.value);
-                this.tempStyle.vBackgroundOpacity = val / 100;
-                document.getElementById('gann-v-opacity-label').textContent = val + '%';
-                this.updatePreview();
-            };
+            const vBgShowEl = document.getElementById('gann-v-background-show');
+            if (vBgShowEl) {
+                vBgShowEl.checked = s.vBackgroundShow !== false;
+                vBgShowEl.onchange = (e) => { this.tempStyle.vBackgroundShow = e.target.checked; this.updatePreview(); };
+            }
+
+            const vOp = Math.round((s.vBackgroundOpacity !== undefined ? s.vBackgroundOpacity : 0.2) * 100);
+            const vOpEl = document.getElementById('gann-v-opacity');
+            const vOpLabel = document.getElementById('gann-v-opacity-label');
+            if (vOpEl && vOpLabel) {
+                vOpEl.value = vOp;
+                vOpLabel.textContent = vOp + '%';
+                vOpEl.oninput = (e) => {
+                    const val = parseInt(e.target.value);
+                    vOpLabel.textContent = val + '%';
+                    this.tempStyle.vBackgroundOpacity = val / 100;
+                    this.updatePreview();
+                };
+            }
 
             // Reverse settings
-            document.getElementById('gann-reverse').checked = !!s.reverse;
-            document.getElementById('gann-reverse').onchange = (e) => { this.tempStyle.reverse = e.target.checked; this.updatePreview(); };
+            const revEl = document.getElementById('gann-reverse');
+            if (revEl) {
+                revEl.checked = !!s.reverse;
+                revEl.onchange = (e) => { this.tempStyle.reverse = e.target.checked; this.updatePreview(); };
+            }
 
             // Angle settings
-            document.getElementById('gann-angles-show').checked = !!s.anglesShow;
+            const anglesShowEl = document.getElementById('gann-angles-show');
+            if (anglesShowEl) {
+                anglesShowEl.checked = !!s.anglesShow;
+                anglesShowEl.onchange = (e) => { this.tempStyle.anglesShow = e.target.checked; this.updatePreview(); };
+            }
             const currentAngleColor = s.anglesColor || s.color || '#2962FF';
-            document.getElementById('gann-angles-color').value = this._hexFromColor(currentAngleColor);
-            document.getElementById('gann-angles-show').onchange = (e) => { this.tempStyle.anglesShow = e.target.checked; this.updatePreview(); };
-            document.getElementById('gann-angles-color').oninput = (e) => { this.tempStyle.anglesColor = e.target.value; this.updatePreview(); };
+            
+            this._syncAdvancedLine('gann-angles-advanced', {
+                hexAlpha: currentAngleColor,
+                thickness: s.anglesWidth || 1
+            }, {
+                showStyle: false,
+                onUpdate: (val) => {
+                    this.tempStyle.anglesColor = val.hexAlpha;
+                    this.tempStyle.anglesWidth = val.thickness;
+                }
+            });
 
             // Removed obsolete font size sync to fix null error after UI simplification
 
             const makeLevelRow = (val, isVisible, levelColor, levelWidth, onToggle, onColor, onWidth) => {
                 const row = document.createElement('div');
                 row.className = 'settings-row';
-                row.style.cssText = 'display:flex; align-items:center; gap:4px; margin:0;';
 
-                // Initial state dimming
-                row.style.opacity = isVisible ? '1' : '0.4';
-                row.style.transition = 'opacity 0.2s';
-
-                const hexColor = this._hexFromColor(levelColor);
+                const sanitizedVal = val.toString().replace(/[^a-z0-9]/gi, '-');
+                const cpContainerId = `gann-level-color-${sanitizedVal}-${Math.random().toString(36).substr(2, 9)}`;
                 row.innerHTML = `
-                            <input type="checkbox" ${isVisible ? 'checked' : ''} style="margin:0;">
-                            <div style="font-size:11px; color:#f0f3fa; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${val}</div>
-                            <input type="color" class="settings-color-picker" value="${hexColor}">
-                            <div class="custom-width-picker">
-                                <div class="custom-width-picker-line" style="height: ${levelWidth}px; background-color: ${hexColor};"></div>
-                                <div class="custom-width-dropdown">
-                                    ${[1, 2, 3, 4].map(w => `
-                                        <div class="custom-width-option ${w === levelWidth ? 'active' : ''}" data-width="${w}">
-                                            <div class="line-hint" style="height: ${w}px; background-color: ${hexColor};"></div>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
+                            <input type="checkbox" ${isVisible ? 'checked' : ''}>
+                            <div style="font-size: 11px; color: #d1d4dc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${val}</div>
+                            <div id="${cpContainerId}"></div>
                         `;
                 const cb = row.querySelector('input[type="checkbox"]');
+                const cpContainer = row.querySelector(`[id="${cpContainerId}"]`);
 
-                const cp = row.querySelector('input[type="color"]');
-                const picker = row.querySelector('.custom-width-picker');
-                const displayLine = picker.querySelector('.custom-width-picker-line');
-                const dropdown = picker.querySelector('.custom-width-dropdown');
+                const isGannFan = this.activeTool.type === 'gann-fan';
+                const adv = new AdvancedLineSetting(cpContainer, {
+                    compact: true,
+                    showOpacity: true,
+                    showStyle: isGannFan,
+                    defaultColor: levelColor,
+                    defaultThickness: levelWidth,
+                    defaultStyle: 'solid',
+                    onChange: (v) => {
+                        onColor({ target: { value: v.hexAlpha } });
+                        if (onWidth) onWidth(v.thickness);
+                    }
+                });
 
-                // Initial state disabling
                 const updateState = (checked) => {
                     row.style.opacity = checked ? '1' : '0.4';
-                    cp.disabled = !checked;
-                    if (picker) {
-                        picker.style.pointerEvents = checked ? 'auto' : 'none';
-                        picker.style.opacity = checked ? '1' : '0.5';
-                    }
+                    if (adv.container) adv.container.style.pointerEvents = checked ? 'auto' : 'none';
                 };
-                updateState(cb.checked);
+                updateState(isVisible);
 
                 cb.onchange = (e) => {
                     updateState(e.target.checked);
                     onToggle(e);
                 };
-                cp.oninput = (e) => {
-                    onColor(e);
-                    displayLine.style.backgroundColor = e.target.value;
-                    dropdown.querySelectorAll('.line-hint').forEach(h => h.style.backgroundColor = e.target.value);
-                };
-
-                picker.onclick = (e) => {
-                    e.stopPropagation();
-                    document.querySelectorAll('.custom-width-dropdown.show').forEach(d => {
-                        if (d !== dropdown) d.classList.remove('show');
-                    });
-                    dropdown.classList.toggle('show');
-                };
-
-                dropdown.querySelectorAll('.custom-width-option').forEach(opt => {
-                    opt.onclick = (e) => {
-                        e.stopPropagation();
-                        const w = parseInt(opt.dataset.width);
-                        displayLine.style.height = w + 'px';
-                        dropdown.querySelectorAll('.custom-width-option').forEach(o => o.classList.remove('active'));
-                        opt.classList.add('active');
-                        dropdown.classList.remove('show');
-                        onWidth(w);
-                    };
-                });
 
                 return row;
             };
@@ -2018,9 +2302,9 @@ export class ToolSettingsController {
                 const groupB = ratios.slice(half);
 
                 const colA = document.createElement('div');
-                colA.style.cssText = 'display:flex; flex-direction:column; gap:4px; flex:1;';
+                colA.style.cssText = 'display:flex; flex-direction:column; gap:0; flex:1;';
                 const colB = document.createElement('div');
-                colB.style.cssText = 'display:flex; flex-direction:column; gap:4px; flex:1;';
+                colB.style.cssText = 'display:flex; flex-direction:column; gap:0; flex:1;';
 
                 const addRow = (parent, r, idxOffset) => {
                     const idx = idxOffset;
@@ -2050,11 +2334,24 @@ export class ToolSettingsController {
                 container.appendChild(colB);
 
                 // Sync background and labels
-                document.getElementById('gann-fan-background-show').checked = s.backgroundShow !== false;
+                const bgShowEl = document.getElementById('gann-fan-background-show');
+                bgShowEl.checked = s.backgroundShow !== false;
+                bgShowEl.onchange = (e) => { this.tempStyle.backgroundShow = e.target.checked; this.updatePreview(); };
+
                 const bgOp = Math.round((s.backgroundOpacity !== undefined ? s.backgroundOpacity : 0.2) * 100);
-                document.getElementById('gann-fan-background-opacity').value = bgOp;
-                document.getElementById('gann-fan-background-opacity-label').textContent = bgOp + '%';
+                const bgOpEl = document.getElementById('gann-fan-background-opacity');
+                const bgOpLabel = document.getElementById('gann-fan-background-opacity-label');
+                bgOpEl.value = bgOp;
+                bgOpLabel.textContent = bgOp + '%';
+                bgOpEl.oninput = (e) => {
+                    const val = parseInt(e.target.value);
+                    bgOpLabel.textContent = val + '%';
+                    this.tempStyle.backgroundOpacity = val / 100;
+                    this.updatePreview();
+                };
+
                 document.getElementById('gann-fan-labels-show').checked = s.labelsShow !== false;
+                document.getElementById('gann-fan-labels-show').onchange = (e) => { this.tempStyle.labelsShow = e.target.checked; this.updatePreview(); };
 
             } else {
                 const populateLevels = (containerId, levelsKey, visibleKey, colorsKey) => {
@@ -2142,7 +2439,7 @@ export class ToolSettingsController {
                 bgShow.checked = s.squareBackgroundShow !== false;
                 bgShow.onchange = (e) => { this.tempStyle.squareBackgroundShow = e.target.checked; this.updatePreview(); };
 
-                const currentArcOp = Math.round((s.squareBackgroundOpacity ?? 0.15) * 100);
+                const currentArcOp = Math.round((s.squareBackgroundOpacity ?? 0.2) * 100);
                 document.getElementById('gann-square-background-opacity').value = currentArcOp;
                 document.getElementById('gann-square-background-opacity-label').textContent = currentArcOp + '%';
                 document.getElementById('gann-square-background-opacity').oninput = (e) => {
@@ -2229,7 +2526,7 @@ export class ToolSettingsController {
             row.className = 'settings-coords-grid';
             const barIndex = this.chart.timeToBar(p.timestamp);
             row.innerHTML = `
-                        <div style="font-size:12px;color:#787b86;">#${i + 1}</div>
+                        <div style="font-size: 11px; color: #d1d4dc;">#${i + 1}</div>
                         <input type="text" class="settings-input-small" value="${this.chart.formatPrice ? this.chart.formatPrice(p.price) : p.price.toFixed(2)}" data-idx="${i}" data-type="price">
                         <input type="text" class="settings-input-small" value="${barIndex}" data-idx="${i}" data-type="bar">
                     `;
@@ -2313,11 +2610,29 @@ export class ToolSettingsController {
             this.activeTool.points = JSON.parse(JSON.stringify(this.backupPoints));
             this.chart.render();
         }
+        if (this.chart.stateManager.undoStack.length > 0) this.chart.stateManager.undoStack.pop();
         this.hide();
     }
 
     apply() {
         if (!this.activeTool) return;
+
+        // Save history of the state BEFORE the settings were changed
+        // Temporarily revert to backup to capture the clean state
+        const currentStyle = JSON.parse(JSON.stringify(this.activeTool.style || {}));
+        const currentText = this.activeTool.text;
+        const currentName = this.activeTool.name;
+
+        this.activeTool.style = this.backupStyle;
+        this.activeTool.text = this.backupText;
+        this.activeTool.name = this.backupName;
+
+        this.chart.saveHistory();
+
+        // Re-apply the previewed/temp changes
+        this.activeTool.style = currentStyle;
+        this.activeTool.text = currentText;
+        this.activeTool.name = currentName;
 
         // Sync custom name directly to the tool object (not style)
         if (this.tempStyle.name !== undefined) {
@@ -2333,6 +2648,8 @@ export class ToolSettingsController {
 
         // Final sync check
         this.updatePreview();
+
+        const isIndicator = !!this.activeTool.isIndicator;
 
         // Update chart defaults so next tool of this type uses these settings
         if (this.chart.styles && this.chart.styles.tools) {
@@ -2376,7 +2693,17 @@ export class ToolSettingsController {
             }
         }
 
-        this.chart.markToolDirty(this.activeTool, 'update');
+        // AUTO-SAVE POLICY:
+        // Jika ini indikator, simpan layout state secara otomatis.
+        // Jika ini gambar, panggil syncWithDatabase agar langsung tersimpan ke server (Auto-save).
+        if (isIndicator) {
+            this.chart.isLayoutDirty = true;
+            if (this.chart._notifyDirtyChange) this.chart._notifyDirtyChange();
+        } else {
+            this.chart.markToolDirty(this.activeTool, 'update');
+            // this.chart.syncWithDatabase(); // DISABLED AUTO-SYNC
+        }
+
         this.chart.render();
         if (window.sidebarController) {
             window.sidebarController.updateObjectTree();

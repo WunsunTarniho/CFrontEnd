@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TimeRange, TimePriceRange, ProjectionTool, LongPosition, ShortPosition } from '../../Chartify/lib/tools/TechnicalTool.js';
+import { TimeRange, TimePriceRange, ProjectionTool, LongPosition, ShortPosition } from '../../Chartify/lib/tools/index.js';
 import { ChartMock, mockCtx } from '../mocks/ChartMock.js';
 
 describe('TimeRange', () => {

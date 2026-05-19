@@ -7,7 +7,7 @@ import {
     touchLayout,
     setDefaultLayout 
 } from './service.js';
-import { saveCurrentLayout, loadStockData } from './data-service.js';
+import { saveCurrentLayout, initMarketSession } from './data-service.js';
 
 export class LayoutMenuController {
     constructor(chart) {
@@ -46,13 +46,7 @@ export class LayoutMenuController {
             }
         });
 
-        // Sync autosave state once chart is loaded
-        window.addEventListener('chartify:data-loaded', () => {
-             const toggle = document.getElementById('layout-autosave-toggle');
-             if (toggle && this.chart) {
-                 this.chart.isAutosaveEnabled = toggle.checked;
-             }
-        });
+
     }
 
     toggleDropdown() {
@@ -76,7 +70,7 @@ export class LayoutMenuController {
             }
 
             layouts.forEach(layout => {
-                const isActive = layout._id === this.chart.currentLayoutId;
+                const isActive = layout.id === this.chart.currentLayoutId;
                 const item = document.createElement('div');
                 item.className = `layout-list-item ${isActive ? 'active' : ''}`;
                 item.innerHTML = `
@@ -93,14 +87,16 @@ export class LayoutMenuController {
                     if (isActive) return;
 
                     try {
-                        // 1. Auto-save current layout before switching
-                        if (this.chart) {
-                            await this.chart.syncWithDatabase();
-                            await saveCurrentLayout();
+                        // Warn if unsaved changes exist
+                        if (this.chart.isLayoutDirty || this.chart.pendingActions.size > 0) {
+                            if (confirm('You have unsaved changes. Save current layout before switching?')) {
+                                await this.chart.syncWithDatabase();
+                                await saveCurrentLayout();
+                            }
                         }
                         
                         // 2. Switch layout
-                        await loadStockData(layout._id);
+                        await initMarketSession(layout.id);
                         this.dropdown.classList.remove('show');
                     } catch (err) {
                         console.error('Failed to switch layout:', err);
@@ -160,24 +156,24 @@ export class LayoutMenuController {
 
                     const chartState = this.chart.getChartState();
                     const indicators = this.chart.indicators.map(ind => ({
-                        indicatorId: ind.indicatorId || ind._id,
+                        indicatorId: ind.indicatorId || ind.id,
                         settings: ind.settings,
                         isVisible: ind.isVisible !== false
                     }));
 
                     const newLayout = await saveLayout({
                         name: newName,
-                        userId: "1",
+                        userId: "6633b499e1a90c2e34789abc",
                         sourceLayoutId: this.chart.currentLayoutId,
-                        lastSymbol: this.chart.symbol,
-                        lastTickerId: this.chart.tickerId,
+                        lastTicker: this.chart.symbol,
+                        lastExchange: this.chart.exchange,
                         chartState,
                         indicators
                     });
                     
                     // 2. Switch to it
-                    if (typeof loadStockData === 'function') {
-                        await loadStockData(newLayout._id);
+                    if (typeof initMarketSession === 'function') {
+                        await initMarketSession(newLayout.id);
                     }
                     this.dropdown.classList.remove('show');
                 } catch (e) {
@@ -202,12 +198,6 @@ export class LayoutMenuController {
             }
         });
 
-        // Autosave / Sharing Toggle Logic
-        document.getElementById('layout-autosave-toggle')?.addEventListener('change', (e) => {
-            if (this.chart) {
-                this.chart.isAutosaveEnabled = e.target.checked;
-                // console.log('Autosave enabled:', e.target.checked);
-            }
-        });
+
     }
 }

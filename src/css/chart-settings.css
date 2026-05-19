@@ -1,4 +1,7 @@
-/* Chart Settings Modal Styles */
+/* 
+   Chart Settings Modal Styles - UI STANDARD 2.4 (UNIVERSAL)
+   Unified standard for Chart, Indicator, and Tool settings.
+*/
 
 .chart-settings-backdrop {
     position: fixed;
@@ -6,38 +9,52 @@
     left: 0;
     width: 100vw;
     height: 100vh;
-    /* background: rgba(0, 0, 0, 0.5); */
+    background: transparent !important;
     z-index: 2000;
     display: none;
-    /* Hidden by default */
     align-items: center;
     justify-content: center;
 }
 
+.chart-settings-backdrop.active {
+    display: flex;
+}
+
 .chart-settings-dialog {
     width: 680px;
-    height: 580px;
-    background: #1e222d;
-    border-radius: 6px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    height: 540px;
+    background: #16161a;
+    border-radius: 8px;
+    box-shadow: 0 0 0 1px #262626, 0 12px 24px rgba(0, 0, 0, 0.5);
     display: flex;
     flex-direction: column;
     color: #d1d4dc;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     overflow: hidden;
 }
 
-/* Header */
-.chart-settings-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid #2a2e39;
+#indicator-settings-dialog {
+    width: 480px;
+    max-height: 75vh;
+    height: auto;
+}
+
+/* Sidebar Override for Indicators */
+#indicator-settings-dialog .chart-settings-sidebar {
+    width: 180px;
+}
+
+/* Header Area */
+.chart-settings-header, .settings-header {
+    padding: 4px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border-bottom: 1px solid #262626;
 }
 
 .chart-settings-title {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     color: #f0f3fa;
 }
@@ -46,13 +63,29 @@
     background: none;
     border: none;
     color: #787b86;
-    font-size: 24px;
     cursor: pointer;
-    line-height: 1;
+    font-size: 20px;
 }
 
-.chart-settings-close:hover {
-    color: #f0f3fa;
+/* Top Tabs Container (for Indicators) */
+.chart-settings-tabs-container {
+    display: flex;
+    padding: 0 20px;
+    gap: 24px;
+    background: #16161a;
+    border-bottom: 1px solid #262626;
+}
+
+.chart-settings-tabs-container .chart-settings-tab {
+    padding: 8px 0;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+}
+
+.chart-settings-tabs-container .chart-settings-tab.active {
+    background: none;
+    color: #2962ff;
+    border-bottom-color: #2962ff;
 }
 
 /* Main Layout */
@@ -62,55 +95,159 @@
     overflow: hidden;
 }
 
-/* Sidebar */
+/* Sidebar Navigation */
 .chart-settings-sidebar {
-    width: 180px;
-    border-right: 1px solid #2a2e39;
-    padding: 8px 0;
-    background: #1e222d;
+    width: 210px;
+    border-right: 1px solid #262626;
+    background: #16161a;
+    padding-top: 8px;
+    flex-shrink: 0;
 }
 
 .chart-settings-tab {
-    padding: 10px 16px;
-    cursor: pointer;
-    font-size: 14px;
-    color: #b2b5be;
+    padding: 10px 24px;
     display: flex;
     align-items: center;
     gap: 12px;
-    transition: background 0.2s, color 0.2s;
+    color: #787b86;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    border-left: 3px solid transparent;
 }
 
 .chart-settings-tab:hover {
-    background: #2a2e39;
-    color: #f0f3fa;
+    color: #d1d4dc;
 }
 
 .chart-settings-tab.active {
-    background: #2a2e39;
+    background: rgba(41, 98, 255, 0.08);
     color: #2962ff;
-    border-left: 2px solid #2962ff;
-    padding-left: 14px;
-    /* Adjust for border */
+    border-left-color: #2962ff;
 }
 
 /* Content Area */
 .chart-settings-content {
     flex: 1;
-    padding: 20px 24px;
+    padding: 20px 30px 30px;
     overflow-y: auto;
-    background: #1e222d;
+    overflow-x: hidden;
 }
 
-.chart-settings-view {
-    display: none;
+/* UNIVERSAL ROW SYSTEM (Flex Gap 10px) */
+.settings-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    min-height: 28px;
+    width: 100%;
 }
 
-.chart-settings-view.active {
-    display: block;
+.settings-row input[type="checkbox"] {
+    margin: 0 !important;
+    flex-shrink: 0;
 }
 
-/* Groups and Rows */
+.settings-row label {
+    font-size: 14px;
+    color: #d1d4dc;
+    cursor: pointer;
+    flex: none;
+}
+
+/* Standardized Description Alignment (28px) */
+.settings-description {
+    font-size: 12px;
+    color: #787b86;
+    margin-left: 28px !important;
+    margin-top: -8px;
+    margin-bottom: 20px;
+    line-height: 1.5;
+    max-width: 440px;
+}
+
+.settings-label {
+    font-size: 13px;
+    color: #d1d4dc;
+    width: 150px; /* Fixed standard width - increased for longer labels */
+    flex-shrink: 0;
+    flex-grow: 0;
+}
+
+.settings-checkbox-label {
+    font-size: 14px;
+    color: #d1d4dc;
+    cursor: pointer;
+    flex: 1;
+}
+
+.settings-input-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-start;
+}
+
+/* Control Alignment */
+.settings-row select,
+.settings-row input[type="number"] {
+    /* Removed margin-left: auto to prevent jumping to far right */
+}
+
+/* SLIM INPUT STYLING (28px) */
+.chart-settings-dialog select,
+.chart-settings-dialog input[type="number"],
+.chart-settings-dialog input[type="text"],
+.settings-input, .settings-select {
+    background-color: #131722 !important;
+    border: 1px solid #434651 !important;
+    color: #d1d4dc !important;
+    height: 28px !important;
+    padding: 0 8px !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    outline: none !important;
+    box-sizing: border-box;
+}
+
+/* Standardized widths for inputs and selects */
+.settings-input, .settings-select {
+    width: 80px !important;
+}
+
+/* Checkbox Precision */
+input[type="checkbox"] {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    width: 18px !important;
+    height: 18px !important;
+    background: #16161a !important;
+    border: 1px solid #434651 !important;
+    border-radius: 2px !important;
+    cursor: pointer !important;
+    position: relative !important;
+    outline: none !important;
+}
+
+input[type="checkbox"]:checked {
+    background: #2962ff !important;
+    border-color: #2962ff !important;
+}
+
+input[type="checkbox"]:checked::after {
+    content: "" !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 5px !important;
+    height: 9px !important;
+    border: solid white !important;
+    border-width: 0 2px 2px 0 !important;
+    transform: translate(-50%, -60%) rotate(45deg) !important;
+}
+
+/* Color Blocks & Groups */
 .settings-group {
     margin-bottom: 24px;
 }
@@ -120,71 +257,18 @@
     font-weight: 700;
     color: #787b86;
     text-transform: uppercase;
+    letter-spacing: 0.8px;
     margin-bottom: 12px;
-    letter-spacing: 0.5px;
 }
 
-.settings-row {
-    display: flex;
-    align-items: center;
-    margin-bottom: 12px;
-    gap: 12px;
-}
-
-.settings-row label {
-    font-size: 14px;
-    color: #d1d4dc;
-    cursor: pointer;
-    flex: none;
-    /* Default behavior: labels followed by something (color pickers, selects) have fixed width for alignment */
-    width: 100px;
-}
-
-/* If the label is the LAST element in the row (e.g., following a checkbox), 
-   let it take all available space to prevent squashing long text. */
-.settings-row label:last-child {
-    flex: 1;
-    width: auto;
-}
-
-.settings-row input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    accent-color: #2962ff;
-    cursor: pointer;
-}
-
-.settings-row select {
-    background: #2a2e39;
-    border: 1px solid #363c4e;
-    color: #d1d4dc;
-    padding: 4px 8px;
-    border-radius: 4px;
-    outline: none;
-    cursor: pointer;
-}
-
-.settings-description {
-    font-size: 12px;
-    color: #787b86;
-    margin-top: -8px;
-    margin-bottom: 16px;
-    padding-left: 28px;
-}
-
-/* Footer */
-.chart-settings-footer {
-    padding: 12px 16px;
-    border-top: 1px solid #2a2e39;
+/* Footer Area */
+.chart-settings-footer, .settings-footer {
+    padding: 10px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #1e222d;
-}
-
-.footer-left {
-    display: flex;
-    align-items: center;
+    border-top: 1px solid #262626;
+    background: #16161a;
 }
 
 .footer-right {
@@ -192,82 +276,729 @@
     gap: 8px;
 }
 
-.chart-settings-btn {
-    padding: 6px 16px;
-    border-radius: 4px;
-    font-size: 14px;
-    font-weight: 500;
+.chart-settings-btn, .settings-btn {
+    height: 35px;
+    padding: 4px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s;
-}
-
-.btn-cancel {
-    background: #2a2e39;
-    color: #f0f3fa;
-    border: 1px solid #363c4e;
-}
-
-.btn-cancel:hover {
-    background: #363c4e;
-}
-
-.btn-ok {
-    background: #2962ff;
-    color: white;
     border: none;
 }
 
-.btn-ok:hover {
-    background: #1e53e5;
+.btn-template { background: #2a2e39; color: #d1d4dc; }
+.btn-cancel { background: #2a2e39; color: #d1d4dc; }
+.btn-ok { background: #2962ff; color: #ffffff; }
+
+/* Visibility Logic - Removed !important to prevent breaking tool-specific filtering */
+.chart-settings-view { display: none; }
+.chart-settings-view.active { display: block; }
+
+.btn-template-text {
+    background: none; border: none; color: #2962ff;
+    font-size: 13px; font-weight: 600; cursor: pointer;
 }
 
-.btn-template {
-    background: transparent;
-    border: 1px solid #363c4e;
-    color: #f0f3fa;
-    display: flex;
+/* Section Title & Divider */
+.settings-section-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #787b86;
+    margin-bottom: 8px;
+    margin-top: 4px;
+}
+
+.settings-section-divider {
+    height: 1px;
+    background: #262626;
+    margin: 12px 0;
+    width: 100%;
+}
+
+/* Coordinates Grid Standard */
+.settings-coords-grid {
+    display: grid;
+    grid-template-columns: 40px 120px 120px;
+    gap: 10px;
     align-items: center;
-    gap: 6px;
+    min-height: 28px;
+    margin-bottom: 8px;
 }
 
-.btn-template:hover {
-    background: #2a2e39;
+.settings-input-small {
+    background-color: #131722 !important;
+    border: 1px solid #434651 !important;
+    color: #d1d4dc !important;
+    height: 28px !important;
+    padding: 0 8px !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    width: 100% !important;
+    outline: none !important;
+    box-sizing: border-box !important;
 }
 
-/* Custom width picker and other inputs (reusing some styles might be needed or redefined) */
-.settings-color-picker {
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: 1px solid #363c4e;
-    border-radius: 4px;
-    background: none;
-    cursor: pointer;
+.settings-input-small:focus {
+    border-color: #2962ff !important;
 }
 
-/* Scrollbar */
-.chart-settings-content::-webkit-scrollbar {
-    width: 6px;
-}
-
-.chart-settings-content::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.chart-settings-content::-webkit-scrollbar-thumb {
-    background: #363c4e;
-    border-radius: 3px;
-}
-
-.chart-settings-content::-webkit-scrollbar-thumb:hover {
-    background: #454b5e;
-}
-
-/* Dynamic Symbol Settings */
-.settings-mode-section {
+/* Visibility Tab Standard */
+.visibility-row {
+    display: grid;
+    grid-template-columns: 110px 60px 1fr 60px;
+    align-items: center;
+    gap: 15px;
+    min-height: 28px;
     margin-bottom: 12px;
 }
 
-.settings-row .settings-color-picker+.settings-color-picker {
-    margin-left: 8px;
+.visibility-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #d1d4dc;
+}
+
+.visibility-input-small {
+    background-color: #131722 !important;
+    border: 1px solid #434651 !important;
+    color: #d1d4dc !important;
+    height: 24px !important; /* Slightly smaller for density */
+    padding: 0 4px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    width: 100% !important;
+    text-align: center !important;
+    outline: none !important;
+}
+
+.visibility-input-small:focus {
+    border-color: #2962ff !important;
+}
+
+.visibility-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #363a45;
+    border-radius: 2px;
+    outline: none;
+}
+
+.visibility-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #2962ff;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+/* Text & Toggles Standard */
+.settings-textarea {
+    width: 100%;
+    height: 100px;
+    background-color: #131722 !important;
+    border: 1px solid #434651 !important;
+    border-radius: 4px;
+    color: #d1d4dc !important;
+    padding: 8px;
+    font-size: 13px;
+    resize: none;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.settings-textarea:focus {
+    border-color: #2962ff !important;
+}
+
+.settings-toggle-group {
+    display: flex;
+    background: #1e222d; /* Slightly different for button containers */
+    border: 1px solid #434651;
+    border-radius: 4px;
+    padding: 2px;
+}
+
+.settings-toggle-btn {
+    width: 32px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #787b86;
+    cursor: pointer;
+    border-radius: 2px;
+    font-size: 12px;
+}
+
+.settings-toggle-btn:hover {
+    color: #d1d4dc;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.settings-toggle-btn.active {
+    background: #2962ff;
+    color: #ffffff;
+}
+
+/* Tool Settings Dialog Standard (Unified with Chart Settings) */
+.settings-dialog-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: transparent !important;
+    z-index: 3000;
+    display: none;
+}
+
+.settings-dialog {
+    position: absolute;
+    background: #16161a;
+    border: 1px solid #262626;
+    border-radius: 8px;
+    width: 480px;
+    /* height: 540px; Standard Height matching chart-settings-dialog */
+    max-width: 95vw;
+    max-height: 75vh;
+    box-shadow: 0 0 0 1px #262626, 0 12px 24px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    color: #d1d4dc;
+    user-select: none;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Removed redundant settings-header - merged above */
+
+.settings-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #f0f3fa;
+}
+
+.settings-close {
+    background: none;
+    border: none;
+    color: #787b86;
+    cursor: pointer;
+    font-size: 20px;
+}
+
+.settings-tabs {
+    display: flex;
+    padding: 0 20px;
+    border-bottom: 1px solid #262626;
+    gap: 24px;
+}
+
+.settings-tab {
+    padding: 8px 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #787b86;
+    cursor: pointer;
+    position: relative;
+    border-bottom: 2px solid transparent;
+}
+
+.settings-tab:hover {
+    color: #d1d4dc;
+}
+
+.settings-tab.active {
+    color: #2962ff;
+    border-bottom-color: #2962ff;
+}
+
+.settings-body {
+    padding: 20px 24px;
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Standard Gap */
+}
+
+/* Premium Scrollbar for Settings */
+.settings-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.settings-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.settings-body::-webkit-scrollbar-thumb {
+    background: #363a45;
+    border-radius: 10px;
+}
+
+.settings-body::-webkit-scrollbar-thumb:hover {
+    background: #4a4e5a;
+}
+
+.settings-view {
+    display: none;
+    flex-direction: column;
+    gap: 10px; /* Standard Gap */
+}
+
+.settings-view.active {
+    display: flex;
+}
+
+.settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* Standard Gap */
+}
+
+/* Removed redundant settings-footer - merged above */
+
+/* Removed redundant settings-btn - merged above */
+
+.settings-btn-cancel {
+    background: #2a2e39;
+    color: #d1d4dc;
+}
+
+.settings-btn-ok {
+    background: #2962ff;
+    color: #ffffff;
+}
+
+/* Advanced Style Tab Components - SUB-ROW Layout */
+.settings-plot-group {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.settings-plot-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* Changed from space-between to flex-start */
+    min-height: 32px;
+    gap: 12px;
+    padding: 4px 0;
+}
+
+.settings-plot-sub-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* Changed from space-between to flex-start */
+    padding-left: 28px;
+    min-height: 32px;
+    margin-top: 4px;
+    gap: 12px;
+}
+
+.settings-plot-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 140px; /* FIXED WIDTH for perfect alignment */
+    flex-shrink: 0;
+}
+
+.settings-plot-sub-row .settings-plot-left {
+    width: 112px; /* 140px - 28px indent = perfect alignment */
+}
+
+.settings-plot-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.settings-sub-label {
+    font-size: 12px;
+    color: #868993; /* Subdued color for sub-labels */
+    min-width: 60px;
+}
+
+
+/* Custom Premium Checkbox */
+.settings-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 1px solid #434651;
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.settings-checkbox:checked {
+    background: #2962ff;
+    border-color: #2962ff;
+}
+
+.settings-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.settings-checkbox:hover {
+    border-color: #2962ff;
+}
+
+.settings-plot-title {
+    font-size: 13px;
+    font-weight: 400;
+    color: #d1d4dc;
+    user-select: none;
+}
+
+.settings-plot-type-select {
+    background: #1e222d;
+    border: 1px solid #363a45;
+    color: #d1d4dc;
+    border-radius: 4px;
+    padding: 0 8px;
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+    height: 28px;
+    width: 95px;
+    transition: border-color 0.2s;
+}
+
+.settings-plot-type-select:hover {
+    border-color: #434651;
+}
+
+.settings-plot-width {
+    width: 42px;
+    height: 28px;
+    background: #1e222d;
+    border: 1px solid #363a45;
+    color: #d1d4dc;
+    border-radius: 4px;
+    padding: 0;
+    font-size: 12px;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.settings-plot-width:focus {
+    border-color: #2962ff;
+}
+
+.style-color-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #1e222d;
+    border: 1px solid #363a45;
+    padding: 0 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    height: 28px;
+    transition: all 0.2s;
+}
+
+.style-color-wrapper:hover {
+    background: #2a2e39;
+    border-color: #434651;
+}
+
+.style-color-block {
+    width: 20px;
+    height: 14px;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+}
+
+.style-color-line {
+    width: 18px;
+    height: 2px;
+    background: currentColor;
+    opacity: 0.7;
+}
+
+/* Advanced Settings Button & Popover - UI STANDARD 2.4 REFINED */
+.more-settings-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #787b86;
+    cursor: pointer;
+    margin-left: 4px;
+    transition: all 0.2s;
+    font-size: 18px;
+}
+
+.more-settings-btn:hover {
+    background: #2a2e39;
+    color: #f0f3fa;
+    border-color: #363a45;
+}
+
+.advanced-settings-popover {
+    position: fixed;
+    background: #16161a;
+    border: 1px solid #363a45;
+    border-radius: 6px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+    padding: 14px 18px;
+    z-index: 3000;
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 0; /* Managed by row margins */
+}
+
+.advanced-settings-popover .settings-row {
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start; /* Standard alignment */
+    gap: 12px;
+    min-height: 28px;
+}
+
+.advanced-settings-popover label {
+    font-size: 13px;
+    color: #d1d4dc;
+    width: 100px; /* Standard fixed width for popover labels */
+    flex-shrink: 0;
+}
+
+.advanced-settings-popover input:not([type="checkbox"]), 
+.advanced-settings-popover select {
+    background: #131722 !important;
+    border: 1px solid #434651 !important;
+    color: #d1d4dc !important;
+    padding: 0 8px !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+    outline: none !important;
+    height: 28px !important;
+    box-sizing: border-box;
+}
+
+.advanced-settings-popover select {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none'%3E%3Cpath d='M2 3.5L5 6.5L8 3.5' stroke='%23787b86' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 8px center !important;
+    padding-right: 24px !important;
+    cursor: pointer;
+}
+
+/* Specific widths for standard alignment */
+.advanced-settings-popover input[type="number"],
+.advanced-settings-popover input[type="text"],
+.advanced-settings-popover select {
+    width: 100px !important;
+}
+
+.advanced-settings-popover .als-control-wrapper {
+    width: auto;
+    display: flex;
+    align-items: center;
+    height: 28px;
+}
+
+/* Ensure the color square inside ALS is standard size */
+.advanced-settings-popover .als-control-wrapper .style-color-wrapper {
+    background: #131722 !important;
+    border: 1px solid #434651 !important;
+}
+
+.advanced-settings-popover input:focus,
+.advanced-settings-popover select:focus {
+    border-color: #2962ff !important;
+}
+
+.popover-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 2999;
+    background: transparent;
+}
+
+/* Plot Mode Selector - UI STANDARD 2.4 Compliance */
+.plot-mode-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.plot-mode-trigger {
+    width: 28px;
+    height: 28px;
+    background: #2a2e39;
+    border: 1px solid #262626; /* Standard Border */
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #d1d4dc;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.plot-mode-trigger:hover {
+    background: #363a45;
+    border-color: #363a45;
+    color: #fff;
+}
+
+.plot-mode-popover {
+    position: absolute;
+    top: -6px; /* Align slightly above to center with trigger if needed, or 0 */
+    left: calc(100% + 10px);
+    background: #1e1e22; /* Standard 2.4 Popover */
+    border: 1px solid #262626; /* Standard 2.4 Border */
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+    z-index: 20000; /* Extremely high to prevent clipping */
+    min-width: 185px;
+    padding: 6px 0;
+    display: none;
+    user-select: none;
+}
+
+.plot-mode-popover.active {
+    display: block;
+}
+
+.plot-mode-header {
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #262626;
+    margin-bottom: 4px;
+}
+
+.plot-mode-header span {
+    font-size: 13px;
+    color: #d1d4dc;
+    font-weight: 500;
+}
+
+.plot-mode-item {
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    color: #d1d4dc;
+    font-size: 13px;
+    transition: background 0.1s, color 0.1s;
+}
+
+.plot-mode-item:hover {
+    background: #262626;
+    color: #fff;
+}
+
+.plot-mode-item.active {
+    color: #2962ff; /* Standard 2.4 Accent */
+    background: rgba(41, 98, 255, 0.1);
+}
+
+.plot-mode-item svg, .plot-mode-trigger svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    fill: none;
+}
+
+.plot-mode-item.active svg {
+    stroke: #2962ff; /* Standard 2.4 Accent */
+}
+
+/* Switch Toggle - UI STANDARD 2.4 Compliance */
+.settings-switch {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+    vertical-align: middle;
+}
+
+.settings-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.settings-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #2a2e39;
+    transition: .2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 18px; /* Pill shape */
+}
+
+.settings-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: #fff;
+    transition: .2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+input:checked + .settings-slider {
+    background-color: #2962ff; /* Standard 2.4 Accent */
+}
+
+input:checked + .settings-slider:before {
+    transform: translateX(14px);
+}
+
+.style-color-line {
+    width: 18px;
+    height: 2px;
+    background: currentColor;
+    opacity: 0.7;
 }

@@ -1,5 +1,7 @@
+export const API_BASE = 'http://localhost:5000';
+
 export const saveDrawingTool = async (drawingData) => {
-    const response = await fetch('http://127.0.0.1:5000/api/draw', {
+    const response = await fetch(`${API_BASE}/api/v1/draw`, {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
@@ -8,14 +10,14 @@ export const saveDrawingTool = async (drawingData) => {
     });
 
     if (!response.ok) {
-        throw new Error('Failed to save drawing tool', response);
+        throw new Error('Failed to save drawing tool');
     }
 
     return await response.json();
 };
 
 export const updateDrawingTool = async (id, drawingData) => {
-    const response = await fetch(`http://127.0.0.1:5000/api/draw/${id}`, {
+    const response = await fetch(`${API_BASE}/api/v1/draw/${id}`, {
         method: 'PUT',
         headers: { 
             'Content-Type': 'application/json',
@@ -24,20 +26,26 @@ export const updateDrawingTool = async (id, drawingData) => {
     });
 
     if (!response.ok) {
-        throw new Error('Failed to update drawing tool', response);
+        throw new Error('Failed to update drawing tool');
     }
 
     return await response.json();
 };
 
 export const getDrawingTools = async (params) => {
-    // params = { layoutId, symbol }
-    const response = await fetch(`http://127.0.0.1:5000/api/draw/fetch`, {
+    const payload = { ...params, userId: "6633b499e1a90c2e34789abc" };
+    
+    if (params.symbol) {
+        payload.symbolId = params.symbolId || params.symbol; // Ensure we use symbolId
+        delete payload.symbol;
+    }
+
+    const response = await fetch(`${API_BASE}/api/v1/draw/fetch`, {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ...params, userId: 1 })
+        body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -48,17 +56,17 @@ export const getDrawingTools = async (params) => {
 };
 
 export const removeDrawingTools = async (id) => {
-    const response = await fetch(`http://localhost:5000/api/draw/${id}`, { method: 'DELETE' });
+    const response = await fetch(`${API_BASE}/api/v1/draw/${id}`, { method: 'DELETE' });
 
     if (!response.ok) {
-        throw new Error('Failed to fetch drawing tools');
+        throw new Error('Failed to delete drawing tool');
     }
 
     return await response.json();
 };
 
 export const bulkSyncDrawingTools = async (actions) => {
-    const response = await fetch('http://localhost:5000/api/draw/bulk', {
+    const response = await fetch(`${API_BASE}/api/v1/draw/bulk`, {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
@@ -66,7 +74,6 @@ export const bulkSyncDrawingTools = async (actions) => {
         body: JSON.stringify({ actions }),
         keepalive: true
     });
-    // console.log(actions, 'dddddddddddddddddddddd');
     if (!response.ok) {
         throw new Error('Failed to bulk sync drawing tools');
     }
@@ -75,33 +82,37 @@ export const bulkSyncDrawingTools = async (actions) => {
 };
 
 export const searchStock = async filter => {
-    const response = await fetch(`http://localhost:5000/api/stock?search=${filter}`)
+    const response = await fetch(`${API_BASE}/api/v1/tickers?search=${encodeURIComponent(filter)}`)
     return await response.json();
 }
 
-export const findStock = async id => {
-    const response = await fetch(`http://localhost:5000/api/stock/${id}`)
+export const findStock = async (id, exchange = '') => {
+    let url = `${API_BASE}/api/v1/ticker/${id}`;
+    if (exchange) {
+        url += `?exchange=${exchange}`;
+    }
+    const response = await fetch(url);
     return await response.json();
 }
 
-export const findStockByTicker = async ticker => {
-    if (!ticker || ticker === 'undefined') {
-        console.warn('findStockByTicker called with invalid ticker:', ticker);
+export const findStockByTicker = async (symbol, exchange) => {
+    if (!symbol || !exchange) {
+        console.warn('findStockByTicker requires both symbol and exchange');
         return { status: false, data: null };
     }
-    const response = await fetch(`http://localhost:5000/api/stock/symbol/${ticker}`)
+    const response = await fetch(`${API_BASE}/api/v1/ticker/resolve?symbol=${symbol}&exchange=${exchange}`)
     return await response.json();
 }
 
 // Layout API
 export const getLayouts = async () => {
-    const response = await fetch(`http://localhost:5000/api/layouts`);
+    const response = await fetch(`${API_BASE}/api/v1/layouts`);
     if (!response.ok) throw new Error('Failed to fetch layouts');
     return await response.json();
 };
 
 export const saveLayout = async (layoutData) => {
-    const response = await fetch('http://localhost:5000/api/layouts', {
+    const response = await fetch(`${API_BASE}/api/v1/layouts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(layoutData)
@@ -111,8 +122,8 @@ export const saveLayout = async (layoutData) => {
 };
 
 export const updateLayout = async (id, layoutData) => {
-    const response = await fetch(`http://localhost:5000/api/layouts/${id}`, {
-        method: 'PATCH',
+    const response = await fetch(`${API_BASE}/api/v1/layouts/${id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(layoutData)
     });
@@ -121,22 +132,23 @@ export const updateLayout = async (id, layoutData) => {
 };
 
 export const deleteLayout = async (id) => {
-    const response = await fetch(`http://localhost:5000/api/layouts/${id}`, { method: 'DELETE' });
+    const response = await fetch(`${API_BASE}/api/v1/layouts/${id}`, { method: 'DELETE' });
     if (!response.ok) throw new Error('Failed to delete layout');
     return true;
 };
+
 export const setDefaultLayout = async (id) => {
-    const response = await fetch(`http://localhost:5000/api/layouts/${id}/set-default`, {
+    const response = await fetch(`${API_BASE}/api/v1/layouts/${id}/default`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: "1" })
+        body: JSON.stringify({ userId: "6633b499e1a90c2e34789abc" })
     });
     if (!response.ok) throw new Error('Failed to set default layout');
     return await response.json();
 };
 
 export const touchLayout = async (id) => {
-    const response = await fetch(`http://localhost:5000/api/layouts/${id}/touch`, {
+    const response = await fetch(`${API_BASE}/api/v1/layouts/${id}/touch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
