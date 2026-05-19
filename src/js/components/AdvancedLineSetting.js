@@ -17,6 +17,10 @@ export class AdvancedLineSetting {
             defaultThickness: 2,
             defaultStyle: 'solid',
             compact: false,
+            allowGradient: false,
+            defaultIsGradient: false,
+            defaultGradientStart: '#26a69a',
+            defaultGradientEnd: '#ef5350',
             onChange: () => { },
             ...options
         };
@@ -26,6 +30,10 @@ export class AdvancedLineSetting {
             opacity: this.options.defaultOpacity,
             thickness: this.options.defaultThickness,
             style: this.options.defaultStyle,
+            isGradient: this.options.allowGradient ? true : this.options.defaultIsGradient,
+            gradientStart: this.options.defaultGradientStart,
+            gradientEnd: this.options.defaultGradientEnd,
+            activeStop: 'start',
             isOpen: false
         };
 
@@ -103,12 +111,37 @@ export class AdvancedLineSetting {
 
     createPopover() {
         // We already have this.popoverId from init()
-        let popover = document.createElement('div');
+        let popover = document.getElementById(this.popoverId);
+        if (popover) {
+            popover.remove();
+        }
+        popover = document.createElement('div');
         popover.id = this.popoverId;
         popover.className = 'line-setting-popover';
+        if (this.state.isOpen) {
+            popover.classList.add('active');
+        }
         document.body.appendChild(popover);
 
+        const currentColor = this.state.isGradient 
+            ? (this.state.activeStop === 'start' ? this.state.gradientStart : this.state.gradientEnd)
+            : this.state.color;
+
         popover.innerHTML = `
+            ${this.state.isGradient ? `
+                <div class="line-setting-section" style="margin-bottom: 12px;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                        <div class="gradient-stop-btn ${this.state.activeStop === 'start' ? 'active' : ''}" data-stop="start" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px; border-radius: 4px; background: #2a2e39; border: 1px solid ${this.state.activeStop === 'start' ? '#2962ff' : '#363a45'}; cursor: pointer; box-sizing: border-box;">
+                            <div class="start-color-preview" style="width: 12px; height: 12px; border-radius: 50%; background: ${this.state.gradientStart}; border: 1px solid #5d606b;"></div>
+                            <span style="font-size: 11px; font-weight: 500; color: #d1d4dc; user-select: none;">Min Color</span>
+                        </div>
+                        <div class="gradient-stop-btn ${this.state.activeStop === 'end' ? 'active' : ''}" data-stop="end" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px; border-radius: 4px; background: #2a2e39; border: 1px solid ${this.state.activeStop === 'end' ? '#2962ff' : '#363a45'}; cursor: pointer; box-sizing: border-box;">
+                            <div class="end-color-preview" style="width: 12px; height: 12px; border-radius: 50%; background: ${this.state.gradientEnd}; border: 1px solid #5d606b;"></div>
+                            <span style="font-size: 11px; font-weight: 500; color: #d1d4dc; user-select: none;">Max Color</span>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
             ${this.options.showColor ? `
                 <div class="color-palette-grid">
                     ${this.renderColorGrid()}
@@ -119,7 +152,7 @@ export class AdvancedLineSetting {
                     <div class="line-setting-label" style="margin-bottom: 8px;">Custom Colors</div>
                     <div class="color-palette-grid" id="${this.popoverId}-custom-grid">
                         ${AdvancedLineSetting.customColors.map(c => `
-                            <div class="color-palette-item ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
+                            <div class="color-palette-item ${currentColor.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
                                  style="background: ${c}" 
                                  data-color="${c}"></div>
                         `).join('')}
@@ -312,9 +345,40 @@ export class AdvancedLineSetting {
         this.popover.querySelectorAll('.color-palette-item:not(.add-custom-color)').forEach(item => {
             item.onclick = (e) => {
                 e.stopPropagation();
-                this.state.color = item.dataset.color;
+                const pickedColor = item.dataset.color;
+                if (this.state.isGradient) {
+                    if (this.state.activeStop === 'start') {
+                        this.state.gradientStart = pickedColor;
+                    } else {
+                        this.state.gradientEnd = pickedColor;
+                    }
+                } else {
+                    this.state.color = pickedColor;
+                }
                 this.updateUI();
                 this.options.onChange(this.getValue());
+            };
+        });
+
+
+        // Gradient stop button clicks
+        this.popover.querySelectorAll('.gradient-stop-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const stop = btn.dataset.stop;
+                if (this.state.activeStop !== stop) {
+                    this.state.activeStop = stop;
+                    // Visual active update
+                    this.popover.querySelectorAll('.gradient-stop-btn').forEach(b => {
+                        const isActive = b.dataset.stop === stop;
+                        b.classList.toggle('active', isActive);
+                        b.style.border = `1px solid ${isActive ? '#2962ff' : '#363a45'}`;
+                    });
+                    this.updateActiveColorPaletteHighlight();
+                    if (this.pickerPopup && this.pickerPopup.style.display === 'block') {
+                        this.initCustomPicker();
+                    }
+                }
             };
         });
 
@@ -356,11 +420,32 @@ export class AdvancedLineSetting {
         });
     }
 
+    updateActiveColorPaletteHighlight() {
+        const currentColor = this.state.isGradient 
+            ? (this.state.activeStop === 'start' ? this.state.gradientStart : this.state.gradientEnd)
+            : this.state.color;
+        
+        this.popover.querySelectorAll('.color-palette-item:not(.add-custom-color)').forEach(item => {
+            item.classList.toggle('active', item.dataset.color.toLowerCase() === currentColor.toLowerCase());
+        });
+
+        const gridId = `${this.popoverId}-custom-grid`;
+        const customGrid = document.getElementById(gridId);
+        if (customGrid) {
+            customGrid.querySelectorAll('.color-palette-item:not(.add-custom-color)').forEach(item => {
+                item.classList.toggle('active', item.dataset.color.toLowerCase() === currentColor.toLowerCase());
+            });
+        }
+    }
+
     togglePickerPopup() {
         const isVisible = this.pickerPopup.style.display === 'block';
+        const currentColor = this.state.isGradient 
+            ? (this.state.activeStop === 'start' ? this.state.gradientStart : this.state.gradientEnd)
+            : this.state.color;
         if (isVisible) {
             this.pickerPopup.style.display = 'none';
-            this.addCustomColor(this.state.color);
+            this.addCustomColor(currentColor);
         } else {
             this.updatePickerPosition();
             this.initCustomPicker();
@@ -391,7 +476,10 @@ export class AdvancedLineSetting {
     }
 
     initCustomPicker() {
-        const hex = this.state.color.substring(0, 7);
+        const currentColor = this.state.isGradient 
+            ? (this.state.activeStop === 'start' ? this.state.gradientStart : this.state.gradientEnd)
+            : this.state.color;
+        const hex = currentColor.substring(0, 7);
         const hsv = this.hexToHsv(hex);
         this.pickerState = { ...hsv };
         this.updateCustomPickerUI();
@@ -471,7 +559,19 @@ export class AdvancedLineSetting {
 
     onPickerChange() {
         const hex = this.hsvToHex(this.pickerState.h, this.pickerState.s, this.pickerState.v);
-        this.state.color = hex;
+        if (this.state.isGradient) {
+            if (this.state.activeStop === 'start') {
+                this.state.gradientStart = hex;
+            } else {
+                this.state.gradientEnd = hex;
+            }
+            // Real-time button color preview circle updates
+            const previewClass = this.state.activeStop === 'start' ? '.start-color-preview' : '.end-color-preview';
+            const previewEl = this.popover.querySelector(previewClass);
+            if (previewEl) previewEl.style.background = hex;
+        } else {
+            this.state.color = hex;
+        }
         this.updateCustomPickerUI();
         this.updateTriggerColor();
         this.options.onChange(this.getValue());
@@ -579,7 +679,10 @@ export class AdvancedLineSetting {
         if (this.state.isOpen) {
             // Auto-add current color to custom colors if it's new
             if (this.options.showColor) {
-                this.addCustomColor(this.state.color);
+                const currentColor = this.state.isGradient 
+                    ? (this.state.activeStop === 'start' ? this.state.gradientStart : this.state.gradientEnd)
+                    : this.state.color;
+                this.addCustomColor(currentColor);
             }
         }
         this.state.isOpen = false;
@@ -613,15 +716,31 @@ export class AdvancedLineSetting {
     }
 
     updateUI() {
+        const currentColor = this.state.isGradient 
+            ? (this.state.activeStop === 'start' ? this.state.gradientStart : this.state.gradientEnd)
+            : this.state.color;
+
         if (this.options.showColor) {
             const mainGrid = this.popover.querySelector('.color-palette-grid');
-            if (mainGrid) mainGrid.innerHTML = this.renderColorGrid();
+            if (mainGrid) {
+                mainGrid.innerHTML = this.colors.map((c, i) => {
+                    let html = `
+                        <div class="color-palette-item checkerboard ${currentColor.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
+                             style="--checkerboard-color: ${c}" 
+                             data-color="${c}"></div>
+                    `;
+                    if (i === 19) {
+                        html += '<div style="grid-column: 1 / -1; height: 10px;"></div>';
+                    }
+                    return html;
+                }).join('');
+            }
 
             const gridId = `${this.popoverId}-custom-grid`;
             const customGrid = document.getElementById(gridId);
             if (customGrid) {
                 const customColorsHtml = AdvancedLineSetting.customColors.map(c => `
-                    <div class="color-palette-item checkerboard ${this.state.color.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
+                    <div class="color-palette-item checkerboard ${currentColor.toLowerCase() === c.toLowerCase() ? 'active' : ''}" 
                          style="--checkerboard-color: ${c}" 
                          data-color="${c}"></div>
                 `).join('') + `
@@ -634,7 +753,7 @@ export class AdvancedLineSetting {
             this.bindPopoverEvents();
         }
 
-        this.popover.style.setProperty('--active-color', this.state.color);
+        this.popover.style.setProperty('--active-color', currentColor);
 
         this.popover.querySelectorAll('[data-thickness]').forEach(btn => {
             btn.classList.toggle('active', parseInt(btn.dataset.thickness) === this.state.thickness);
@@ -651,6 +770,14 @@ export class AdvancedLineSetting {
             if (valueText) valueText.textContent = `${Math.round(this.state.opacity * 100)}%`;
         }
 
+        // Live Gradient Stops and Visual Updates
+        if (this.state.isGradient) {
+            const startPreview = this.popover.querySelector('.start-color-preview');
+            if (startPreview) startPreview.style.background = this.state.gradientStart;
+            const endPreview = this.popover.querySelector('.end-color-preview');
+            if (endPreview) endPreview.style.background = this.state.gradientEnd;
+        }
+
         this.updateTriggerColor();
     }
 
@@ -663,13 +790,35 @@ export class AdvancedLineSetting {
 
     updateTriggerColor() {
         const triggerColor = this.container.querySelector('.line-setting-trigger-color');
+        const applyOpacity = (hex) => {
+            if (hex.length === 4) {
+                hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+            }
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${this.state.opacity})`;
+        };
+
         if (triggerColor) {
-            triggerColor.style.setProperty('--checkerboard-color', this.getColorWithOpacity());
+            if (this.state.isGradient) {
+                const colorA = applyOpacity(this.state.gradientStart);
+                const colorB = applyOpacity(this.state.gradientEnd);
+                triggerColor.style.background = `linear-gradient(135deg, ${colorA} 50%, ${colorB} 50%)`;
+            } else {
+                triggerColor.style.background = '';
+                triggerColor.style.setProperty('--checkerboard-color', this.getColorWithOpacity());
+            }
         }
 
         const linePreview = this.container.querySelector('.trigger-line-preview');
         if (linePreview) {
-            linePreview.style.backgroundColor = this.getColorWithOpacity();
+            if (this.state.isGradient) {
+                linePreview.style.background = `linear-gradient(to right, ${applyOpacity(this.state.gradientStart)}, ${applyOpacity(this.state.gradientEnd)})`;
+            } else {
+                linePreview.style.background = '';
+                linePreview.style.backgroundColor = this.getColorWithOpacity();
+            }
             linePreview.style.height = `${this.state.thickness}px`;
         }
     }
@@ -686,13 +835,26 @@ export class AdvancedLineSetting {
     }
 
     getValue() {
+        const applyOpacity = (hex) => {
+            if (hex.length === 4) {
+                hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+            }
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${this.state.opacity})`;
+        };
+
         return {
             color: this.state.color,
             opacity: this.state.opacity,
             thickness: this.state.thickness,
             style: this.state.style,
-            rgba: this.getColorWithOpacity(),
-            hexAlpha: this.getHexAlpha()
+            rgba: this.state.isGradient ? applyOpacity(this.state.gradientStart) : this.getColorWithOpacity(),
+            hexAlpha: this.getHexAlpha(),
+            isGradient: this.state.isGradient,
+            gradientStart: this.state.gradientStart,
+            gradientEnd: this.state.gradientEnd
         };
     }
 
@@ -706,14 +868,25 @@ export class AdvancedLineSetting {
     }
 
     setValue(values) {
+        if (this.options.allowGradient) {
+            this.state.isGradient = true;
+        } else if (values.isGradient !== undefined) {
+            this.state.isGradient = values.isGradient;
+        }
+        if (values.gradientStart) this.state.gradientStart = values.gradientStart;
+        if (values.gradientEnd) this.state.gradientEnd = values.gradientEnd;
         if (values.color) this.state.color = values.color;
         if (values.opacity !== undefined) this.state.opacity = values.opacity;
         if (values.thickness) this.state.thickness = values.thickness;
         if (values.style) this.state.style = values.style;
 
-        // Support both #RRGGBB and #RRGGBBAA
+        // Support both #RRGGBB and #RRGGBBAA and gradient inputs
         if (values.hexAlpha) {
-            if (values.hexAlpha.length === 9) {
+            if (typeof values.hexAlpha === 'object' && values.hexAlpha.isGradient) {
+                this.state.isGradient = true;
+                this.state.gradientStart = values.hexAlpha.bottomColor || values.hexAlpha.gradientStart || '#26a69a';
+                this.state.gradientEnd = values.hexAlpha.topColor || values.hexAlpha.gradientEnd || '#ef5350';
+            } else if (values.hexAlpha.length === 9) {
                 this.state.color = values.hexAlpha.slice(0, 7);
                 this.state.opacity = parseInt(values.hexAlpha.slice(7, 9), 16) / 255;
             } else if (values.hexAlpha.length === 7) {
@@ -734,6 +907,7 @@ export class AdvancedLineSetting {
 
         this.updateTriggerColor();
         if (this.popover) {
+            this.createPopover();
             this.updateUI();
         }
     }

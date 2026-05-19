@@ -1285,13 +1285,32 @@ export class IndicatorSettingsController {
                 alsContainer.className = 'als-control-wrapper';
                 const als = new AdvancedLineSetting(alsContainer, {
                     showColor: true, showOpacity: true, showThickness: false, showStyle: false, compact: true,
+                    allowGradient: !!cObj.isGradient,
                     onChange: (val) => {
-                        bg.colorMap[cObj.color] = val.rgba;
-                        cObj.color = val.rgba;
+                        if (val.isGradient) {
+                            bg.color = {
+                                isGradient: true,
+                                bottomColor: val.gradientStart,
+                                topColor: val.gradientEnd,
+                                factors: []
+                            };
+                            cObj.color = bg.color;
+                        } else {
+                            bg.colorMap[cObj.color] = val.rgba;
+                            cObj.color = val.rgba;
+                        }
                         this.updatePreview();
                     }
                 });
-                als.setValue({ hexAlpha: bg.colorMap[cObj.color] || cObj.color });
+                if (cObj.isGradient) {
+                    als.setValue({
+                        isGradient: true,
+                        gradientStart: cObj.color.bottomColor,
+                        gradientEnd: cObj.color.topColor
+                    });
+                } else {
+                    als.setValue({ hexAlpha: bg.colorMap[cObj.color] || cObj.color });
+                }
                 this.alsInstances.push(als);
                 controls.appendChild(alsContainer);
 
@@ -1393,13 +1412,32 @@ export class IndicatorSettingsController {
                 alsContainer.className = 'als-control-wrapper';
                 const als = new AdvancedLineSetting(alsContainer, {
                     showColor: true, showOpacity: true, showThickness: false, showStyle: false, compact: true,
+                    allowGradient: !!cObj.isGradient,
                     onChange: (val) => {
-                        bc.colorMap[cObj.color] = val.rgba;
-                        cObj.color = val.rgba;
+                        if (val.isGradient) {
+                            bc.color = {
+                                isGradient: true,
+                                bottomColor: val.gradientStart,
+                                topColor: val.gradientEnd,
+                                factors: []
+                            };
+                            cObj.color = bc.color;
+                        } else {
+                            bc.colorMap[cObj.color] = val.rgba;
+                            cObj.color = val.rgba;
+                        }
                         this.updatePreview();
                     }
                 });
-                als.setValue({ hexAlpha: bc.colorMap[cObj.color] || cObj.color });
+                if (cObj.isGradient) {
+                    als.setValue({
+                        isGradient: true,
+                        gradientStart: cObj.color.bottomColor,
+                        gradientEnd: cObj.color.topColor
+                    });
+                } else {
+                    als.setValue({ hexAlpha: bc.colorMap[cObj.color] || cObj.color });
+                }
                 this.alsInstances.push(als);
                 controls.appendChild(alsContainer);
 
@@ -1606,18 +1644,37 @@ export class IndicatorSettingsController {
 
         const alsContainer = document.createElement('div');
         alsContainer.className = 'als-control-wrapper';
+        const isGradient = fill.color && typeof fill.color === 'object' && fill.color.isGradient;
         const als = new AdvancedLineSetting(alsContainer, {
             showColor: true, 
             showOpacity: true, 
             showThickness: false, 
             showStyle: false,     
             compact: true,
+            allowGradient: isGradient,
             onChange: (val) => { 
-                fill.color = val.rgba; 
+                if (val.isGradient) {
+                    fill.color = {
+                        isGradient: true,
+                        bottomColor: val.gradientStart,
+                        topColor: val.gradientEnd,
+                        factors: []
+                    };
+                } else {
+                    fill.color = val.rgba; 
+                }
                 this.updatePreview(); 
             }
         });
-        als.setValue({ hexAlpha: fill.color || 'rgba(33, 150, 243, 0.2)' });
+        if (isGradient) {
+            als.setValue({
+                isGradient: true,
+                gradientStart: fill.color.bottomColor,
+                gradientEnd: fill.color.topColor
+            });
+        } else {
+            als.setValue({ hexAlpha: fill.color || 'rgba(33, 150, 243, 0.2)' });
+        }
         this.alsInstances.push(als);
         controls.appendChild(alsContainer);
 
@@ -1889,9 +1946,37 @@ export class IndicatorSettingsController {
         const colors = [];
         const colorData = item.color || (item.id && (item.id.startsWith('bgcolor_') || item.id.startsWith('barcolor_')) ? item.data : null);
 
+        if (colorData && colorData.isGradient) {
+            colors.push({ color: colorData, label: '', index: -1, isGradient: true });
+            return colors;
+        }
+
+        if (colorData && Array.isArray(colorData.subColors)) {
+            colorData.subColors.forEach((c, i) => {
+                const isGrad = c && typeof c === 'object' && c.isGradient;
+                colors.push({
+                    color: c,
+                    originalColor: c,
+                    label: isGrad ? 'Gradient' : `Color ${i + 1}`,
+                    index: i,
+                    isGradient: isGrad
+                });
+            });
+            return colors;
+        }
+
         if (Array.isArray(colorData)) {
             const uniqueColors = [...new Set(colorData.filter(c => c !== null && c !== 'na' && c !== 'none'))].slice(0, 6);
-            uniqueColors.forEach((c, i) => colors.push({ color: c, label: `Color ${i + 1}`, index: i }));
+            uniqueColors.forEach((c, i) => {
+                const isGrad = c && typeof c === 'object' && c.isGradient;
+                colors.push({
+                    color: c,
+                    originalColor: c,
+                    label: isGrad ? 'Gradient' : `Color ${i + 1}`,
+                    index: i,
+                    isGradient: isGrad
+                });
+            });
         } else {
             colors.push({ color: item.color || (Array.isArray(item.data) ? item.data[0] : '#2196F3'), label: '', index: -1 });
         }
@@ -1943,6 +2028,7 @@ export class IndicatorSettingsController {
 
         const als = new AdvancedLineSetting(alsContainer, {
             showColor: true, showOpacity: true, showThickness: isLineType, showStyle: isLineType, compact: true,
+            allowGradient: !!cObj.isGradient,
             onChange: (val) => { 
                 this.updatePlotStyle(plot, cObj, val, isLineType); 
                 this.updatePreview(); 
@@ -2033,23 +2119,43 @@ export class IndicatorSettingsController {
     }
 
     updatePlotStyle(plot, cObj, val, isLineType) {
-        if (cObj.index === -1) {
-            plot.color = val.rgba;
-            if (isLineType) {
-                plot.width = val.thickness; plot.lineStyle = val.style;
-                if (!['step','area','columns','histogram','circles','cross'].includes(plot.style)) plot.style = val.style;
-            }
-        } else {
+        if (cObj.index !== -1) {
+            // It is a sub-color row!
             if (!plot.colorMap) plot.colorMap = {};
             const originalColor = cObj.originalColor || cObj.color;
             if (!cObj.originalColor) cObj.originalColor = originalColor;
 
-            plot.colorMap[originalColor] = val.rgba;
-
-            if (Array.isArray(plot.color)) plot.color = plot.color.map(c => c === cObj.color ? val.rgba : c);
-            else plot.color = val.rgba;
-            cObj.color = val.rgba;
+            if (val.isGradient) {
+                plot.colorMap[originalColor] = {
+                    isGradient: true,
+                    bottomColor: val.gradientStart,
+                    topColor: val.gradientEnd,
+                    factors: []
+                };
+                cObj.color = plot.colorMap[originalColor];
+            } else {
+                plot.colorMap[originalColor] = val.rgba;
+                cObj.color = val.rgba;
+            }
             if (isLineType) this.updateMultiColorStyle(plot, val);
+        } else {
+            // It is a single/main color row!
+            if (val.isGradient) {
+                plot.color = {
+                    isGradient: true,
+                    bottomColor: val.gradientStart,
+                    topColor: val.gradientEnd,
+                    factors: []
+                };
+                cObj.color = plot.color;
+            } else {
+                plot.color = val.rgba;
+                cObj.color = val.rgba;
+            }
+            if (isLineType) {
+                plot.width = val.thickness; plot.lineStyle = val.style;
+                if (!['step','area','columns','histogram','circles','cross'].includes(plot.style)) plot.style = val.style;
+            }
         }
     }
 
@@ -2074,10 +2180,32 @@ export class IndicatorSettingsController {
     }
 
     initALS(als, plot, cObj) {
-        const ls = Array.isArray(plot.lineStyle) ? (plot.lineStyle[plot.color.indexOf(cObj.color)] || 'solid') : (plot.lineStyle || 'solid');
-        const bs = Array.isArray(plot.style) ? (plot.style[plot.color.indexOf(cObj.color)] || 'solid') : (plot.style || 'solid');
+        const originalColor = cObj.originalColor || cObj.color;
+        const currentVal = (plot.colorMap && plot.colorMap[originalColor]) || cObj.color;
+
+        let colorIdx = -1;
+        if (Array.isArray(plot.color)) {
+            colorIdx = plot.color.indexOf(cObj.color);
+        }
+        const ls = Array.isArray(plot.lineStyle) ? (plot.lineStyle[colorIdx] || 'solid') : (plot.lineStyle || 'solid');
+        const bs = Array.isArray(plot.style) ? (plot.style[colorIdx] || 'solid') : (plot.style || 'solid');
         const eff = (ls === 'dashed' || ls === 'dotted') ? ls : ((bs === 'dashed' || bs === 'dotted') ? bs : 'solid');
-        als.setValue({ hexAlpha: cObj.color, thickness: plot.width || 2, style: eff });
+        
+        if (cObj.isGradient) {
+            als.setValue({
+                isGradient: true,
+                gradientStart: currentVal.bottomColor || '#ef5350',
+                gradientEnd: currentVal.topColor || '#26a69a',
+                thickness: Array.isArray(plot.width) ? (plot.width[colorIdx] || 2) : (plot.width || 2),
+                style: eff
+            });
+        } else {
+            als.setValue({ 
+                hexAlpha: currentVal, 
+                thickness: Array.isArray(plot.width) ? (plot.width[colorIdx] || 2) : (plot.width || 2), 
+                style: eff 
+            });
+        }
         this.alsInstances.push(als);
     }
 

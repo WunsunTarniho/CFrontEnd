@@ -64,7 +64,7 @@ export class ScriptEditorController {
                     }],
 
                     // Variable declarations (e.g., int src =)
-                    [/(int|float|bool|string|color|void)(\s+)([a-z_$][\w$]*)/, ['keyword', '', 'identifier']],
+                    [/(int|float|bool|string|color|void|array)(\s+)([a-z_$][\w$]*)/, ['keyword', '', 'identifier']],
 
                     // Named Arguments (e.g., color=, title=)
                     [/[a-z_$][\w$]*(?=\s*=(?!=))/, 'attribute.name'],
@@ -97,13 +97,15 @@ export class ScriptEditorController {
                 ]
             },
             keywords: [
-                'int', 'float', 'bool', 'string', 'color', 'void', 'return', 'if', 'else', 'switch', 'case', 'default', 'true', 'false', 'na', 'for', 'to', 'and', 'or', 'not'
+                'int', 'float', 'bool', 'string', 'color', 'void', 'return', 'if', 'else', 'switch', 'case', 'default', 'true', 'false', 'na', 'for', 'to', 'and', 'or', 'not', 'array'
             ],
             builtins: [
                 'plot', 'sma', 'ema', 'rsi', 'stoch', 'bb', 'atr', 'supertrend', 'vwap',
                 'input', 'indicator', 'plotshape', 'hline', 'fill', 'rgba',
                 'label', 'label.new', 'line', 'line.new', 'bar_index',
-                'open', 'high', 'low', 'close', 'volume', 'time', 'hl2', 'hlc3', 'ohlc4', 'hlcc4'
+                'open', 'high', 'low', 'close', 'volume', 'time', 'hl2', 'hlc3', 'ohlc4', 'hlcc4',
+                'stdev', 'variance', 'covariance', 'correlation', 'linreg', 'linreg_slope', 'linreg_intercept',
+                'array', 'array.new_float', 'array.new_int', 'array.new_bool', 'array.new_color', 'array.new_string', 'array.push', 'array.get', 'array.set', 'array.size', 'array.clear', 'array.remove', 'array.insert', 'array.pop', 'array.shift', 'array.unshift', 'array.sort', 'array.avg', 'array.min', 'array.max', 'array.sum'
             ]
         });
 
@@ -233,14 +235,40 @@ export class ScriptEditorController {
                     const suggestions = [];
                     
                     if (namespace === 'color') {
-                        const colors = ['red', 'green', 'blue', 'white', 'black', 'yellow', 'orange', 'purple', 'gray', 'teal', 'lime', 'maroon', 'navy', 'olive', 'silver', 'aqua', 'fuchsia', 'new'];
+                        const colors = ['red', 'green', 'blue', 'white', 'black', 'yellow', 'orange', 'purple', 'gray', 'teal', 'lime', 'maroon', 'navy', 'olive', 'silver', 'aqua', 'fuchsia', 'new', 'rgb', 'gradient'];
                         colors.forEach(c => {
-                            suggestions.push({
-                                label: c,
-                                kind: monaco.languages.CompletionItemKind.Property,
-                                insertText: c,
-                                detail: `color.${c}`
-                            });
+                            if (c === 'gradient') {
+                                suggestions.push({
+                                    label: c,
+                                    kind: monaco.languages.CompletionItemKind.Method,
+                                    insertText: 'gradient(${1:close}, ${2:0}, ${3:100}, ${4:color.red}, ${5:color.green})',
+                                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                    detail: 'color.gradient(value, bottom_value, top_value, bottom_color, top_color)'
+                                });
+                            } else if (c === 'new') {
+                                suggestions.push({
+                                    label: c,
+                                    kind: monaco.languages.CompletionItemKind.Method,
+                                    insertText: 'new(${1:color.blue}, ${2:50})',
+                                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                    detail: 'color.new(color, transparency)'
+                                });
+                            } else if (c === 'rgb') {
+                                suggestions.push({
+                                    label: c,
+                                    kind: monaco.languages.CompletionItemKind.Method,
+                                    insertText: 'rgb(${1:255}, ${2:255}, ${3:255})',
+                                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                    detail: 'color.rgb(red, green, blue, transparency?)'
+                                });
+                            } else {
+                                suggestions.push({
+                                    label: c,
+                                    kind: monaco.languages.CompletionItemKind.Property,
+                                    insertText: c,
+                                    detail: `color.${c}`
+                                });
+                            }
                         });
                     } else if (namespace === 'input') {
                         const inputs = [
@@ -286,6 +314,29 @@ export class ScriptEditorController {
                             insertText: 'new(x1=${1:bar_index[1]}, y1=${2:low[1]}, x2=${3:bar_index}, y2=${4:low})',
                             insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
                             detail: 'line.new(x1, y1, x2, y2)'
+                        });
+                    } else if (namespace === 'array') {
+                        const arrayMethods = ['new_float', 'new_int', 'new_bool', 'new_color', 'new_string', 'push', 'get', 'set', 'size', 'clear', 'remove', 'insert', 'pop', 'shift', 'unshift', 'sort', 'avg', 'min', 'max', 'sum'];
+                        arrayMethods.forEach(m => {
+                            let ins = m + '($0)';
+                            if (m.startsWith('new_')) {
+                                ins = m + '(${1:size}, ${2:initial_value})';
+                            } else if (m === 'push' || m === 'unshift' || m === 'insert') {
+                                ins = m + '(${1:arr}, ${2:value})';
+                            } else if (m === 'get' || m === 'remove') {
+                                ins = m + '(${1:arr}, ${2:index})';
+                            } else if (m === 'set') {
+                                ins = m + '(${1:arr}, ${2:index}, ${3:value})';
+                            } else {
+                                ins = m + '(${1:arr})';
+                            }
+                            suggestions.push({
+                                label: m,
+                                kind: monaco.languages.CompletionItemKind.Method,
+                                insertText: ins,
+                                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                                detail: `array.${m}`
+                            });
                         });
                     }
                     
@@ -343,7 +394,14 @@ export class ScriptEditorController {
                     { name: 'lowest', snippet: 'lowest(${1:close}, ${2:14})', desc: 'Lowest value in a lookback window' },
                     { name: 'pivothigh', snippet: 'pivothigh(${1:leftBars}, ${2:rightBars})', desc: 'Pivot High point index' },
                     { name: 'pivotlow', snippet: 'pivotlow(${1:leftBars}, ${2:rightBars})', desc: 'Pivot Low point index' },
-                    { name: 'fixnan', snippet: 'fixnan(${1:close})', desc: 'Replace NaN with the last non-NaN value' }
+                    { name: 'fixnan', snippet: 'fixnan(${1:close})', desc: 'Replace NaN with the last non-NaN value' },
+                    { name: 'stdev', snippet: 'stdev(${1:close}, ${2:14})', desc: 'Standard Deviation' },
+                    { name: 'variance', snippet: 'variance(${1:close}, ${2:14})', desc: 'Variance' },
+                    { name: 'covariance', snippet: 'covariance(${1:close}, ${2:open}, ${3:14})', desc: 'Covariance of two series' },
+                    { name: 'correlation', snippet: 'correlation(${1:close}, ${2:open}, ${3:14})', desc: 'Pearson Correlation Coefficient' },
+                    { name: 'linreg', snippet: 'linreg(${1:close}, ${2:14}, ${3:0})', desc: 'Linear Regression Value' },
+                    { name: 'linreg_slope', snippet: 'linreg_slope(${1:close}, ${2:14})', desc: 'Linear Regression Slope' },
+                    { name: 'linreg_intercept', snippet: 'linreg_intercept(${1:close}, ${2:14})', desc: 'Linear Regression Intercept' }
                 ];
 
                 functions.forEach(f => {
@@ -358,7 +416,7 @@ export class ScriptEditorController {
                 });
 
                 // Add namespace base suggestions
-                const namespaces = ['color', 'input', 'box', 'label', 'line'];
+                const namespaces = ['color', 'input', 'box', 'label', 'line', 'array'];
                 namespaces.forEach(ns => {
                     suggestions.push({
                         label: ns,
@@ -486,8 +544,8 @@ export class ScriptEditorController {
                         ]
                     },
                     'plot': {
-                        label: 'void plot(float series, string title, color color, int width, string style, bool force_overlay)',
-                        documentation: 'Plots a time-series on the chart.',
+                        label: 'plot plot(float series, string title, color color, int width, string style, bool force_overlay)',
+                        documentation: 'Plots a time-series on the chart, returning a plot reference for area filling.',
                         parameters: [
                             { label: 'series', documentation: 'Type: float - Data series to plot (e.g. close).' },
                             { label: 'title', documentation: 'Type: string - Title of the plot.' },
@@ -547,8 +605,8 @@ export class ScriptEditorController {
                         ]
                     },
                     'hline': {
-                        label: 'void hline(float price, string title, color color, int width, string style)',
-                        documentation: 'Plots a constant horizontal price line.',
+                        label: 'hline hline(float price, string title, color color, int width, string style)',
+                        documentation: 'Plots a constant horizontal price line, returning an hline reference for area filling.',
                         parameters: [
                             { label: 'price', documentation: 'Type: float - Price level.' },
                             { label: 'title', documentation: 'Type: string - Title.' },
@@ -612,6 +670,65 @@ export class ScriptEditorController {
                     'lowest': {
                         label: 'float lowest(float source, int length)',
                         documentation: 'Lowest value in a lookback window.',
+                        parameters: [
+                            { label: 'source', documentation: 'Type: float - Source data series.' },
+                            { label: 'length', documentation: 'Type: int - Lookback length.' }
+                        ]
+                    },
+                    'stdev': {
+                        label: 'float stdev(float source, int length)',
+                        documentation: 'Standard Deviation.',
+                        parameters: [
+                            { label: 'source', documentation: 'Type: float - Source data series.' },
+                            { label: 'length', documentation: 'Type: int - Lookback length.' }
+                        ]
+                    },
+                    'variance': {
+                        label: 'float variance(float source, int length)',
+                        documentation: 'Sample variance of a series.',
+                        parameters: [
+                            { label: 'source', documentation: 'Type: float - Source data series.' },
+                            { label: 'length', documentation: 'Type: int - Lookback length.' }
+                        ]
+                    },
+                    'covariance': {
+                        label: 'float covariance(float source1, float source2, int length)',
+                        documentation: 'Covariance of two series.',
+                        parameters: [
+                            { label: 'source1', documentation: 'Type: float - First source series.' },
+                            { label: 'source2', documentation: 'Type: float - Second source series.' },
+                            { label: 'length', documentation: 'Type: int - Lookback length.' }
+                        ]
+                    },
+                    'correlation': {
+                        label: 'float correlation(float source1, float source2, int length)',
+                        documentation: 'Pearson Correlation Coefficient of two series.',
+                        parameters: [
+                            { label: 'source1', documentation: 'Type: float - First source series.' },
+                            { label: 'source2', documentation: 'Type: float - Second source series.' },
+                            { label: 'length', documentation: 'Type: int - Lookback length.' }
+                        ]
+                    },
+                    'linreg': {
+                        label: 'float linreg(float source, int length, int offset)',
+                        documentation: 'Linear regression curve value at offset.',
+                        parameters: [
+                            { label: 'source', documentation: 'Type: float - Source data series.' },
+                            { label: 'length', documentation: 'Type: int - Lookback length.' },
+                            { label: 'offset', documentation: 'Type: int - Bar offset (optional, default: 0).' }
+                        ]
+                    },
+                    'linreg_slope': {
+                        label: 'float linreg_slope(float source, int length)',
+                        documentation: 'Linear regression slope.',
+                        parameters: [
+                            { label: 'source', documentation: 'Type: float - Source data series.' },
+                            { label: 'length', documentation: 'Type: int - Lookback length.' }
+                        ]
+                    },
+                    'linreg_intercept': {
+                        label: 'float linreg_intercept(float source, int length)',
+                        documentation: 'Linear regression intercept.',
                         parameters: [
                             { label: 'source', documentation: 'Type: float - Source data series.' },
                             { label: 'length', documentation: 'Type: int - Lookback length.' }
@@ -697,6 +814,17 @@ export class ScriptEditorController {
                             { label: 'green', documentation: 'Type: int - Green component (0 to 255).' },
                             { label: 'blue', documentation: 'Type: int - Blue component (0 to 255).' },
                             { label: 'transparency', documentation: 'Type: int - Transparency percentage (optional, 0 to 100).' }
+                        ]
+                    },
+                    'color.gradient': {
+                        label: 'color color.gradient(float value, float bottom_value, float top_value, color bottom_color, color top_color)',
+                        documentation: 'Calculates a color dynamically based on a value between bottom and top values, interpolating between two colors.',
+                        parameters: [
+                            { label: 'value', documentation: 'Type: float - The series or value to base the gradient calculation on.' },
+                            { label: 'bottom_value', documentation: 'Type: float - The lower boundary value representing the bottom of the gradient range.' },
+                            { label: 'top_value', documentation: 'Type: float - The upper boundary value representing the top of the gradient range.' },
+                            { label: 'bottom_color', documentation: 'Type: color - Color corresponding to bottom_value.' },
+                            { label: 'top_color', documentation: 'Type: color - Color corresponding to top_value.' }
                         ]
                     },
                     'box.new': {
